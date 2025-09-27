@@ -24,7 +24,7 @@ spec:
             tunnel: argocd
             ingress:
             - hostname: argocd.shinyshiba.com
-              service: http://argocd-server.argocd:443
+              service: https://argocd-server:443
               originRequest:
                 noTLSVerify: true
                 disableChunkedEncoding: true
