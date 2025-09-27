@@ -23,11 +23,11 @@ spec:
           configFile:
             tunnel: argocd
             credentials-file: /etc/cloudflared/creds/credentials.json
-            originRequest:
-              noTLSVerify: true
             ingress:
             - hostname: argocd.shinyshiba.com
-              service: https://argocd-server.argocd.svc.cluster.local:443
+              service: http://argocd-server.argocd.svc.cluster.local
+              originRequest:
+                insecureSkipVerify: true
             - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
