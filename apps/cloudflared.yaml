@@ -6,12 +6,24 @@ metadata:
 spec:
   project: default
   source:
-    path: apps
-    repoURL: 'https://github.com/hojhon/homelab-argocd'
-    targetRevision: main
-    directory:
-      recurse: true
-      include: argocd-cloudflared.yaml
+    repoURL: 'https://cloudflare.github.io/helm-charts'
+    targetRevision: 0.1.2
+    chart: cloudflare-tunnel-remote
+    helm:
+      values: |
+        images:
+          cloudflared:
+            repository: "cloudflare/cloudflared"
+            tag: "2024.2.0"
+            pullPolicy: "IfNotPresent"
+        tunnel:
+          existingSecret: cloudflared-cloudflare-tunnel-remote
+          tokenKey: tunnelToken
+          name: argocd
+          ingress:
+          - hostname: argocd.shinyshiba.com
+            service: http://argocd-server.argocd:80
+          - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
