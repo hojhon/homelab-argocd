@@ -18,12 +18,12 @@ spec:
             pullPolicy: "IfNotPresent"
         config:
           tunnel: argocd
-          credentials-file: /etc/cloudflared/creds/credentials.json
           ingress:
             - hostname: argocd.shinyshiba.com
               service: argocd-server.argocd:443
+              originRequest:
+                noTLSVerify: true
             - service: http_status:404
-          no-tls-verify: true
         tunnel:
           existingSecret: cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
