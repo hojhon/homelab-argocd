@@ -22,9 +22,10 @@ spec:
           name: argocd
           configFile:
             tunnel: argocd
+            credentials-file: /etc/cloudflared/creds/credentials.json
             ingress:
             - hostname: argocd.shinyshiba.com
-              service: https://argocd-server:443
+              service: https://argocd-server.argocd.svc.cluster.local:443
               originRequest:
                 noTLSVerify: true
                 disableChunkedEncoding: true
