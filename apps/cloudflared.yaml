@@ -16,18 +16,19 @@ spec:
             repository: "cloudflare/cloudflared"
             tag: "2024.2.0"  # Using specific version instead of latest
             pullPolicy: "IfNotPresent"
-        config:
-          tunnel: argocd
-          ingress:
-            - hostname: argocd.shinyshiba.com
-              service: argocd-server.argocd:443
-              originRequest:
-                noTLSVerify: true
-            - service: http_status:404
         tunnel:
           existingSecret: cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
-          name: "argocd"
+          name: argocd
+          configFile:
+            tunnel: argocd
+            ingress:
+            - hostname: argocd.shinyshiba.com
+              service: http://argocd-server.argocd:443
+              originRequest:
+                noTLSVerify: true
+                disableChunkedEncoding: true
+            - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
