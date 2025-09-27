@@ -20,13 +20,11 @@ spec:
           existingSecret: cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
           name: "argocd"
-          config:
-            ingress:
-              - hostname: argocd.shinyshiba.com
-                service: https://argocd-server.argocd.svc.cluster.local:443
-                originRequest:
-                  noTLSVerify: true
-              - service: http_status:404
+          ingress:
+            - hostname: argocd.shinyshiba.com
+              service: https://argocd-server.argocd:443
+              noTLSVerify: true
+            - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
