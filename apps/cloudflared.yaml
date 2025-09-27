@@ -17,14 +17,14 @@ spec:
             tag: "2024.2.0"  # Using specific version instead of latest
             pullPolicy: "IfNotPresent"
         tunnel:
-          existingSecret: cloudflared-cloudflare-tunnel-remote  # Match the secret name
-          tokenKey: tunnelToken  # Match the key in our secret
+          existingSecret: cloudflared-cloudflare-tunnel-remote
+          tokenKey: tunnelToken
           name: "argocd"
           ingress:
             - hostname: argocd.shinyshiba.com
-              service: https://argocd-server.argocd.svc:443
               originRequest:
-                noTLSVerify: true  # Because ArgoCD uses self-signed cert
+                noTLSVerify: true
+              service: https://argocd-server.argocd.svc.cluster.local:443
             - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
