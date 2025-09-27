@@ -9,9 +9,7 @@ data:
     no-autoupdate: true
     ingress:
     - hostname: argocd.shinyshiba.com
-      service: https://argocd-server.argocd.svc.cluster.local:443
-      originRequest:
-        noTLSVerify: true
+      service: http://argocd-server.argocd:80
     - service: http_status:404
 ---
 apiVersion: apps/v1
