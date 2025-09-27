@@ -7,23 +7,17 @@ spec:
   project: default
   source:
     repoURL: 'https://cloudflare.github.io/helm-charts'
-    targetRevision: 0.1.2
-    chart: cloudflare-tunnel-remote
+    targetRevision: 0.3.2
+    chart: cloudflare-tunnel
     helm:
       values: |
-        images:
-          cloudflared:
-            repository: "cloudflare/cloudflared"
-            tag: "latest"
-            pullPolicy: "Always"
-          alexprinter:
-            repository: "bmo75/alex-printer-build-counter"
-            tag: "latest"
-            pullPolicy: "Always"
         tunnel:
-          existingSecret: cf-token
-          tokenKey: TUNNEL_TOKEN
-          hostname: "alexprinter.bmosan.com"
+          existingSecret: cloudflared-token
+          config:
+            ingress:
+              - hostname: argocd.shinyshiba.com
+                service: https://argocd-server.argocd.svc:443
+              - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
@@ -33,3 +27,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+
