@@ -19,8 +19,12 @@ spec:
         tunnel:
           existingSecret: cf-token
           tokenKey: TUNNEL_TOKEN
-          name: "argocd"  # Added tunnel name
-          hostname: "argocd.shinyshiba.com"
+          name: "argocd"
+          config:
+            ingress:
+              - hostname: "argocd.shinyshiba.com"
+                service: "https://argocd-server.argocd.svc:443"
+              - service: "http_status:404"  # Catch-all rule
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
