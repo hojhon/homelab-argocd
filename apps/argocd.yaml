@@ -22,15 +22,22 @@ spec:
               readOnly: true
         configs:
           cmp:
-            plugins:
-              sops:
-                image: butcher/argocd-sops:v1.2.0
-                init:
-                  command: ["/bin/sh", "-c"]
-                  args: ["gpg --import /app/config/pgp/key.asc"]
-                generate:
-                  command: ["/bin/sh", "-c"]
-                  args: ["sops -d ."]
+            create: true
+            data:
+              "sops.yaml": |
+                apiVersion: argoproj.io/v1alpha1
+                kind: ConfigManagementPlugin
+                metadata:
+                  name: sops
+                spec:
+                  version: v1.0
+                  image: butcher/argocd-sops:v1.2.0
+                  init:
+                    command: ["/bin/sh", "-c"]
+                    args: ["gpg --import /app/config/pgp/key.asc"]
+                  generate:
+                    command: ["/bin/sh", "-c"]
+                    args: ["sops -d ."]
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
