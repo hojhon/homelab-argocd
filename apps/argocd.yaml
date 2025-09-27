@@ -11,19 +11,6 @@ spec:
     chart: argo-cd
     helm:
       values: |
-        server:
-          ingress:
-            enabled: true
-            hostname: argocd.shinyshiba.com
-            ingressClassName: nginx
-            annotations:
-              cert-manager.io/cluster-issuer: letsencrypt-prod
-              nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-              nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-            tls:
-              - hosts:
-                  - argocd.shinyshiba.com
-                secretName: argocd-server-tls
         repoServer:
           volumes:
             - name: sops-pgp-key
