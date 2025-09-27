@@ -24,6 +24,7 @@ spec:
           cmp:
             plugins:
               sops:
+                image: butcher/argocd-sops:v1.2.0
                 init:
                   command: ["/bin/sh", "-c"]
                   args: ["gpg --import /app/config/pgp/key.asc"]
