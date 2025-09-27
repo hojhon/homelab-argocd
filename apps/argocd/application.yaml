@@ -24,6 +24,25 @@ spec:
               - hosts:
                   - argocd.shinyshiba.com
                 secretName: argocd-server-tls
+        repoServer:
+          volumes:
+            - name: sops-pgp-key
+              secret:
+                secretName: sops-pgp-key
+          volumeMounts:
+            - name: sops-pgp-key
+              mountPath: /app/config/pgp
+              readOnly: true
+        configs:
+          cmp:
+            plugins:
+              sops:
+                init:
+                  command: ["/bin/sh", "-c"]
+                  args: ["gpg --import /app/config/pgp/key.asc"]
+                generate:
+                  command: ["/bin/sh", "-c"]
+                  args: ["sops -d ."]
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
