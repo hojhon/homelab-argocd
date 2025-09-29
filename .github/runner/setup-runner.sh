@@ -47,8 +47,8 @@ sudo rm actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
 # Set correct ownership
 sudo chown -R github-runner:github-runner /home/github-runner/actions-runner
 
-# Install additional dependencies
-sudo ./bin/installdependencies.sh
+# Install additional dependencies (must not run as root)
+sudo -u github-runner ./bin/installdependencies.sh
 
 # Copy K3s config
 sudo mkdir -p /home/github-runner/.kube
