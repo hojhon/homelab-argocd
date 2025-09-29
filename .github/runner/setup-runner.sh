@@ -98,7 +98,7 @@ sudo -u github-runner bash -c 'cd /home/github-runner/actions-runner && ./config
     --url https://github.com/hojhon/homelab-argocd \
     --token "'${RUNNER_TOKEN}'" \
     --name "dev-ops" \
-    --labels "self-hosted,k3s,proxmox,dev-ops" \
+    --labels "self-hosted,dev-ops" \
     --work _work \
     --runasservice'
 
