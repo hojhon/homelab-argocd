@@ -14,14 +14,6 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
-          echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 --decode > kubeconfig.yaml
-          chmod 600 kubeconfig.yaml
-          echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
-          echo "--- kubeconfig preview (first 60 lines) ---"
-          sed -n '1,60p' kubeconfig.yaml || true
-          echo "server entries:"
-          grep 'server:' kubeconfig.yaml || true
-          echo "kubectl version (quick):"
           kubectl --kubeconfig=kubeconfig.yaml version --short || true
 
       - name: Create namespaces
