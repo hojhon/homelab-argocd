@@ -67,9 +67,20 @@ jobs:
 
       - name: Wait for ArgoCD to be ready
         run: |
-         kubectl --kubeconfig="$KUBECONFIG" -n argocd wait --for=condition=available --timeout=300s deployment/argocd-server || true
-          sleep 30  # Give additional time for services to stabilize
-
+          echo "Waiting for ArgoCD server deployment to be created..."
+          ATTEMPTS=0
+          MAX_ATTEMPTS=30
+          until kubectl get deployment argocd-argo-cd-server -n argocd --ignore-not-found; do
+            if [ $ATTEMPTS -eq $MAX_ATTEMPTS ]; then
+              echo "Timed out waiting for deployment to be created."
+              exit 1
+            fi
+            ATTEMPTS=$((ATTEMPTS + 1))
+            echo "Deployment not found yet. Retrying in 10 seconds..."
+            sleep 10
+          done
+          echo "Deployment found. Waiting for it to become available..."
+          kubectl wait --for=condition=available --timeout=300s deployment/argocd-argo-cd-server -n argocd
       - name: Apply Cloudflared
         run: kubectl --kubeconfig="$KUBECONFIG" apply --validate=false -f apps/cloudflared.yaml
 
