@@ -69,7 +69,7 @@ log "Installing runner dependencies (as github-runner user)..."
 cd /home/github-runner/actions-runner
 echo "e"
 sudo chown -R github-runner:github-runner .
-echo "a"
+echo
 sudo -H -u github-runner bash << 'EOF'
     cd /home/github-runner/actions-runner
     export RUNNER_ALLOW_RUNASROOT=1
@@ -78,10 +78,13 @@ EOF
 
 # Setup Kubernetes access
 log "Setting up Kubernetes configuration..."
+echo "a-dr"
 mkdir -p /home/github-runner/.kube
-cp /etc/rancher/k3s/k3s.yaml /home/github-runner/.kube/config
-chown -R github-runner:github-runner /home/github-runner/.kube
-chmod 600 /home/github-runner/.kube/config
+echo "a-cp"
+sudo cp /etc/rancher/k3s/k3s.yaml /home/github-runner/.kube/config
+echo "a-chown-chmod"
+sudo chown -R github-runner:github-runner /home/github-runner/.kube
+sudo chmod 600 /home/github-runner/.kube/config
 
 # Verify runner token
 if [ -z "$RUNNER_TOKEN" ]; then
