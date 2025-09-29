@@ -35,10 +35,14 @@ jobs:
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
           
-          # Create ArgoCD admin password using the env variable
+          # Generate a random secret key for the ArgoCD server
+          ARGOCD_SECRET_KEY=$(openssl rand -base64 32)
+
+          # Create ArgoCD secret with both the admin password and the server secret key
           kubectl --kubeconfig="$KUBECONFIG" -n argocd create secret generic argocd-secret \
             --from-literal=admin.password="$ARGOCD_PASS" \
             --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
+            --from-literal=server.secretkey="$ARGOCD_SECRET_KEY" \
             --dry-run=client -o yaml | kubectl apply --validate=false -f -
           
           # Create Cloudflared tunnel token using the env variable
