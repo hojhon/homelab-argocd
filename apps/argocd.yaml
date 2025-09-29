@@ -1,38 +1,36 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd
+  name: cloudflared
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: 'https://argoproj.github.io/argo-helm'
-    targetRevision: 6.11.0
-    chart: argo-cd
+    repoURL: 'https://cloudflare.github.io/helm-charts'
+    targetRevision: 0.1.2
+    chart: cloudflare-tunnel-remote
     helm:
       values: |
-        server:
-          extraArgs:
-            - --insecure # Since we're using Cloudflare for TLS
-          config:
-            url: https://argocd.shinyshiba.com
-            application.instanceLabelKey: argocd.argoproj.io/instance
-        configs:
-          params:
-            server.insecure: true # Since we're using Cloudflare for TLS
-        redis-ha:
-          enabled: false # Single node setup
-        controller:
-          replicas: 1
-        server:
-          replicas: 1
-        repoServer:
-          replicas: 1
-        applicationSet:
-          replicas: 1
+        images:
+          cloudflared:
+            repository: "cloudflare/cloudflared"
+            tag: "2024.2.0"
+        tunnel:
+          existingSecret: cloudflared-cloudflare-tunnel-remote
+          tokenKey: tunnelToken
+          name: homelab
+        
+        # This ingress section now contains ALL necessary settings
+        ingress:
+          - hostname: argocd.shinyshiba.com
+            service: https://argocd-server.argocd.svc:443
+            originRequest:
+              noTLSVerify: true # This is the code version of "No TLS Verify"
+          - service: http_status:404
+
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: argocd
+    namespace: cloudflare
   syncPolicy:
     automated:
       prune: true
