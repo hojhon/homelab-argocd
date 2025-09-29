@@ -3,6 +3,13 @@ set -e
 
 echo "Setting up GitHub Actions runner for ArgoCD..."
 
+# Check if running on the correct host
+HOSTNAME=$(hostname)
+if [ "$HOSTNAME" != "dev-ops" ]; then
+    echo "Error: This script must be run on the dev-ops VM (current host: $HOSTNAME)"
+    exit 1
+fi
+
 # System update and essential packages
 echo "Updating system and installing dependencies..."
 sudo apt-get update
@@ -54,7 +61,7 @@ fi
 sudo -u github-runner ./config.sh --unattended \
     --url https://github.com/hojhon/homelab-argocd \
     --token ${RUNNER_TOKEN} \
-    --name "argocd-runner" \
+    --name "dev-ops" \
     --labels "self-hosted,k3s,proxmox" \
     --work _work
 
