@@ -66,7 +66,13 @@ chown -R github-runner:github-runner /home/github-runner/actions-runner
 
 # Install additional dependencies (must not run as root)
 log "Installing runner dependencies (as github-runner user)..."
-sudo -u github-runner bash -c 'cd /home/github-runner/actions-runner && ./bin/installdependencies.sh'
+cd /home/github-runner/actions-runner
+chown -R github-runner:github-runner .
+sudo -H -u github-runner bash << 'EOF'
+    cd /home/github-runner/actions-runner
+    export RUNNER_ALLOW_RUNASROOT=1
+    ./bin/installdependencies.sh
+EOF
 
 # Setup Kubernetes access
 log "Setting up Kubernetes configuration..."
