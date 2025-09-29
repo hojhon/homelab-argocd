@@ -17,12 +17,17 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 --decode > kubeconfig.yaml
           chmod 600 kubeconfig.yaml
           echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
-          kubectl --kubeconfig=kubeconfig.yaml config view
+          echo "--- kubeconfig preview (first 60 lines) ---"
+          sed -n '1,60p' kubeconfig.yaml || true
+          echo "server entries:"
+          grep 'server:' kubeconfig.yaml || true
+          echo "kubectl version (quick):"
+          kubectl --kubeconfig=kubeconfig.yaml version --short || true
 
       - name: Create namespaces
         run: |
-          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig=kubeconfig.yaml create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig=kubeconfig.yaml apply -f -
+          kubectl --kubeconfig=kubeconfig.yaml create namespace cloudflare --dry-run=client -o yaml | kubectl --kubeconfig=kubeconfig.yaml apply -f -
 
       - name: Create ArgoCD admin password
         run: |
