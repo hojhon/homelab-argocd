@@ -1,51 +1,68 @@
-name: Bootstrap ArgoCD
+name: 1 - Bootstrap ArgoCD
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   bootstrap:
     runs-on: [self-hosted, dev-ops]
+    environment: homelab-variables
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Create Kubeconfig
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure Kubeconfig
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
-        
-      - name: 1. Install Core ArgoCD Components
+          if [ -f "/home/github-runner/.kube/config" ]; then
+            echo "KUBECONFIG=/home/github-runner/.kube/config" >> $GITHUB_ENV
+          elif [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+            cp /etc/rancher/k3s/k3s.yaml kubeconfig.yaml
+            chmod 600 kubeconfig.yaml
+            echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+          else
+            echo "No kubeconfig found on runner" >&2
+            exit 1
+          fi
+
+      - name: Create Namespaces and Secrets
         run: |
-          echo "Creating argocd namespace..."
-          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
           
-          echo "Applying official ArgoCD install manifest..."
-          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+          kubectl --kubeconfig="$KUBECONFIG" -n argocd create secret generic argocd-secret \
+            --from-literal=admin.password="${{ secrets.ARGOCD_ADMIN_PASSWORD }}" \
+            --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
+            --dry-run=client -o yaml | kubectl apply --validate=false -f -
+          
+          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
+            --from-literal=tunnelToken="${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply --validate=false -f -
 
-      - name: 2. Wait for Initial ArgoCD Server to be Ready
+      - name: Install Core ArgoCD Controller
         run: |
-          echo "Waiting for the initial argocd-server deployment to become available..."
-          kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
-          echo "Initial ArgoCD server is ready."
+          echo "Applying official ArgoCD install manifest..."
+          kubectl --kubeconfig="$KUBECONFIG" apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-      - name: 3. Apply the Root Application
+      - name: Wait for Initial ArgoCD Server
+        run: |
+          echo "Waiting for the initial argocd-server deployment..."
+          kubectl --kubeconfig="$KUBECONFIG" wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+
+      - name: Apply the Root Application for GitOps
         run: |
           echo "Applying the root application to hand over control to GitOps..."
-          # This is the ONLY application manifest we need to apply manually.
-          # ArgoCD will now sync and apply everything else from the 'apps' directory.
-          kubectl apply -f homelab-apps/root-application.yaml
+          kubectl --kubeconfig="$KUBECONFIG" apply -f homelab-apps/root-application.yaml
 
-      - name: 4. Wait for GitOps Handover to Complete
+      - name: Wait for GitOps Handover to Complete
         run: |
           echo "Waiting for the GitOps-managed 'argocd' application to become healthy..."
-          # This command waits for the Application resource defined in your argocd.yaml 
-          # to be fully synced and healthy, confirming the handover was successful.
-          kubectl wait --for=jsonpath='{.status.health.status}'=Healthy \
-            --timeout=300s \
-            -n argocd \
-            application/argocd
-          echo "Bootstrap complete! ArgoCD is now managing itself and all other apps."
+          kubectl --kubeconfig="$KUBECONFIG" wait --for=jsonpath='{.status.health.status}'=Healthy \
+            --timeout=300s -n argocd application/argocd
+          echo "Bootstrap complete! ArgoCD is now managing all applications from Git."
+
+      - name: Clean up
+        if: always()
+        run: rm -f kubeconfig.yaml || true

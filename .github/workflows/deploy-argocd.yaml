@@ -1,43 +1,45 @@
-name: Bootstrap ArgoCD
+name: 2 - Deploy Applications
 
 on:
+  workflow_dispatch: # Manual trigger
   push:
     branches:
       - main
-  workflow_dispatch:
+    paths:
+      - 'apps/**'
 
 jobs:
-  bootstrap:
+  deploy:
     runs-on: [self-hosted, dev-ops]
+    environment: homelab-variables
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Create Kubeconfig
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
-        
-      - name: 1. Install Core ArgoCD Components
-        run: |
-          echo "Creating argocd namespace..."
-          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-          echo "Applying official ArgoCD install manifest..."
-          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
 
-      - name: 2. Wait for Initial ArgoCD Server
+      - name: Configure Kubeconfig
         run: |
-          echo "Waiting for the initial argocd-server deployment to become available..."
-          kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
-          echo "Initial ArgoCD server is ready."
+          if [ -f "/home/github-runner/.kube/config" ]; then
+            echo "KUBECONFIG=/home/github-runner/.kube/config" >> $GITHUB_ENV
+          elif [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+            cp /etc/rancher/k3s/k3s.yaml kubeconfig.yaml
+            chmod 600 kubeconfig.yaml
+            echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+          else
+            echo "No kubeconfig found on runner" >&2
+            exit 1
+          fi
 
-      - name: 3. Apply Root Application for GitOps
+      - name: Apply Application Manifests
         run: |
-          echo "Applying the root application to hand over control to GitOps..."
-          kubectl apply -f homelab-apps/root-application.yaml
+          echo "Applying ArgoCD application manifest..."
+          kubectl --kubeconfig="$KUBECONFIG" apply --validate=false -f apps/argocd.yaml
+          
+          echo "Applying Cloudflared application manifest..."
+          kubectl --kubeconfig="$KUBECONFIG" apply --validate=false -f apps/cloudflared.yaml
 
-      - name: 4. Wait for GitOps-Managed ArgoCD to be Healthy
-        run: |
-          echo "Waiting for the GitOps-managed 'argocd' application to become healthy..."
-          # This confirms ArgoCD has synced itself and all other apps, including cloudflared.
-          kubectl wait --for=jsonpath='{.status.health.status
+      - name: Clean up
+        if: always()
+        run: rm -f kubeconfig.yaml || true
