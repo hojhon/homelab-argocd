@@ -1,0 +1,66 @@
+#!/bin/bash
+set -e
+
+echo "Setting up GitHub Actions runner for ArgoCD..."
+
+# System update and essential packages
+echo "Updating system and installing dependencies..."
+sudo apt-get update
+sudo apt-get install -y \
+    curl \
+    git \
+    jq \
+    wget \
+    build-essential \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates
+
+# Install kubectl
+echo "Installing kubectl..."
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+rm kubectl
+
+# Create runner user and directory
+sudo useradd -m github-runner -s /bin/bash || true
+sudo usermod -aG sudo github-runner
+echo "github-runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/github-runner
+
+# Switch to runner user and directory
+cd /home/github-runner
+
+# Download and extract the runner
+RUNNER_VERSION=2.311.0
+sudo -u github-runner curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+sudo -u github-runner tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+sudo -u github-runner rm actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# Install additional dependencies
+sudo -u github-runner ./bin/installdependencies.sh
+
+# Copy K3s config
+sudo mkdir -p /home/github-runner/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml /home/github-runner/.kube/config
+sudo chown -R github-runner:github-runner /home/github-runner/.kube
+
+# Configure the runner
+if [ -z "$RUNNER_TOKEN" ]; then
+    echo "Please set the RUNNER_TOKEN environment variable"
+    echo "You can get this token from GitHub > Repository Settings > Actions > Runners > New self-hosted runner"
+    exit 1
+fi
+
+sudo -u github-runner ./config.sh --unattended \
+    --url https://github.com/hojhon/homelab-argocd \
+    --token ${RUNNER_TOKEN} \
+    --name "argocd-runner" \
+    --labels "self-hosted,k3s,proxmox" \
+    --work _work
+
+# Install as a service
+sudo ./svc.sh install github-runner
+sudo ./svc.sh start
+
+echo "GitHub Actions runner has been installed and started!"
+echo "You can check its status in GitHub > Repository Settings > Actions > Runners"
