@@ -67,22 +67,21 @@ chown -R github-runner:github-runner /home/github-runner/actions-runner
 # Install additional dependencies (must not run as root)
 log "Installing runner dependencies (as github-runner user)..."
 cd /home/github-runner/actions-runner
-echo "e"
-sudo chown -R github-runner:github-runner .
-echo
-sudo -H -u github-runner bash << 'EOF'
-    cd /home/github-runner/actions-runner
-    export RUNNER_ALLOW_RUNASROOT=1
-    ./bin/installdependencies.sh
-EOF
+chown -R github-runner:github-runner .
+
+# Run dependencies installation as github-runner user
+if ! sudo -H -u github-runner bash -c 'cd /home/github-runner/actions-runner && ./bin/installdependencies.sh'; then
+    error "Failed to install runner dependencies"
+fi
 
 # Setup Kubernetes access
 log "Setting up Kubernetes configuration..."
-echo "a-dr"
+if [ ! -f "/etc/rancher/k3s/k3s.yaml" ]; then
+    error "K3s config not found at /etc/rancher/k3s/k3s.yaml"
+fi
+
 mkdir -p /home/github-runner/.kube
-echo "a-cp"
-sudo cp /etc/rancher/k3s/k3s.yaml /home/github-runner/.kube/config
-echo "a-chown-chmod"
+cp /etc/rancher/k3s/k3s.yaml /home/github-runner/.kube/config
 sudo chown -R github-runner:github-runner /home/github-runner/.kube
 sudo chmod 600 /home/github-runner/.kube/config
 
