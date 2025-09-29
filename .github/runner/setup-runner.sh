@@ -67,7 +67,9 @@ chown -R github-runner:github-runner /home/github-runner/actions-runner
 # Install additional dependencies (must not run as root)
 log "Installing runner dependencies (as github-runner user)..."
 cd /home/github-runner/actions-runner
-chown -R github-runner:github-runner .
+echo "e"
+sudo chown -R github-runner:github-runner .
+echo "a"
 sudo -H -u github-runner bash << 'EOF'
     cd /home/github-runner/actions-runner
     export RUNNER_ALLOW_RUNASROOT=1
