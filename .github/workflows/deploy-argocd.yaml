@@ -16,6 +16,8 @@ jobs:
         run: |
           echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
           echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+          export KUBECONFIG=$(pwd)/kubeconfig.yaml
+          kubectl config view
 
       - name: Create namespaces
         run: |
