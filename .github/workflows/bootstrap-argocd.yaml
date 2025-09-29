@@ -113,22 +113,21 @@ jobs:
             fi
           done
 
-          # Determine admin password: prefer provided ARGOCD_ADMIN_PASSWORD if set, otherwise prefer argocd-initial-admin-secret
-          ADMIN_PW=""
-          if [ -n "$ARGOCD_ADMIN_PASSWORD" ]; then
+          # Determine admin password: prefer the generated initial password (unique) if available; otherwise fallback to ARGOCD_ADMIN_PASSWORD
+          ADMIN_PW=$(kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 --decode || true)
+          if [ -n "$ADMIN_PW" ]; then
+            echo "Using initial admin password from argocd-initial-admin-secret"
+          elif [ -n "$ARGOCD_ADMIN_PASSWORD" ]; then
             ADMIN_PW="$ARGOCD_ADMIN_PASSWORD"
             echo "Using ARGOCD_ADMIN_PASSWORD from secrets"
-          elif kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1; then
-            ADMIN_PW=$(kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode)
-            echo "Using initial admin password from argocd-initial-admin-secret"
           else
-            echo "No ArgoCD admin password available (neither ARGOCD_ADMIN_PASSWORD nor initial secret)." >&2
+            echo "No ArgoCD admin password available (neither initial secret nor ARGOCD_ADMIN_PASSWORD)." >&2
             kill $PF_PID || true
             exit 1
           fi
 
 
-          # Login to ArgoCD using determined password
+          # Login to ArgoCD using determined password (quote to avoid special-char issues)
           echo "Logging into ArgoCD..."
           argocd login 127.0.0.1:8080 --username admin --password "$ADMIN_PW" --insecure || {
             echo "ArgoCD login failed" >&2
