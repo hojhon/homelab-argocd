@@ -10,7 +10,7 @@ jobs:
   bootstrap:
     runs-on: [self-hosted, dev-ops]
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Create Kubeconfig
@@ -22,22 +22,30 @@ jobs:
         run: |
           echo "Creating argocd namespace..."
           kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          
           echo "Applying official ArgoCD install manifest..."
           kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-      - name: 2. Wait for Initial ArgoCD Server
+      - name: 2. Wait for Initial ArgoCD Server to be Ready
         run: |
           echo "Waiting for the initial argocd-server deployment to become available..."
           kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
           echo "Initial ArgoCD server is ready."
 
-      - name: 3. Apply Root Application for GitOps
+      - name: 3. Apply the Root Application
         run: |
           echo "Applying the root application to hand over control to GitOps..."
+          # This is the ONLY application manifest we need to apply manually.
+          # ArgoCD will now sync and apply everything else from the 'apps' directory.
           kubectl apply -f homelab-apps/root-application.yaml
 
-      - name: 4. Wait for GitOps-Managed ArgoCD to be Healthy
+      - name: 4. Wait for GitOps Handover to Complete
         run: |
           echo "Waiting for the GitOps-managed 'argocd' application to become healthy..."
-          # This confirms ArgoCD has synced itself and all other apps, including cloudflared.
-          kubectl wait --for=jsonpath='{.status.health.status
+          # This command waits for the Application resource defined in your argocd.yaml 
+          # to be fully synced and healthy, confirming the handover was successful.
+          kubectl wait --for=jsonpath='{.status.health.status}'=Healthy \
+            --timeout=300s \
+            -n argocd \
+            application/argocd
+          echo "Bootstrap complete! ArgoCD is now managing itself and all other apps."
