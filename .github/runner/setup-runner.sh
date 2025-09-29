@@ -34,17 +34,21 @@ sudo useradd -m github-runner -s /bin/bash || true
 sudo usermod -aG sudo github-runner
 echo "github-runner ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/github-runner
 
-# Switch to runner user and directory
-cd /home/github-runner
+# Create and setup runner directory
+sudo mkdir -p /home/github-runner/actions-runner
+cd /home/github-runner/actions-runner
 
 # Download and extract the runner
 RUNNER_VERSION=2.311.0
-sudo -u github-runner curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
-sudo -u github-runner tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
-sudo -u github-runner rm actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+sudo curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+sudo tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+sudo rm actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# Set correct ownership
+sudo chown -R github-runner:github-runner /home/github-runner/actions-runner
 
 # Install additional dependencies
-sudo -u github-runner ./bin/installdependencies.sh
+sudo ./bin/installdependencies.sh
 
 # Copy K3s config
 sudo mkdir -p /home/github-runner/.kube
@@ -58,15 +62,20 @@ if [ -z "$RUNNER_TOKEN" ]; then
     exit 1
 fi
 
-sudo -u github-runner ./config.sh --unattended \
+# Run config with proper permissions
+sudo ./config.sh --unattended \
     --url https://github.com/hojhon/homelab-argocd \
     --token ${RUNNER_TOKEN} \
     --name "dev-ops" \
     --labels "self-hosted,k3s,proxmox" \
-    --work _work
+    --work _work \
+    --runasservice
 
-# Install as a service
-sudo ./svc.sh install github-runner
+# Set correct permissions after configuration
+sudo chown -R github-runner:github-runner /home/github-runner/actions-runner
+
+# Install and start the service
+sudo ./svc.sh install
 sudo ./svc.sh start
 
 echo "GitHub Actions runner has been installed and started!"
