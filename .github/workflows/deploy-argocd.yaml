@@ -6,6 +6,7 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, dev-ops]
+    environment: homelab-variables
     steps:
       - uses: actions/checkout@v4
 
@@ -14,12 +15,13 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
-          kubectl --kubeconfig=kubeconfig.yaml version --short || true
+            # Write multiline kubeconfig from environment secret
+            kubectl --kubeconfig=/home/github-runner/kubeconfig.yaml version --client=true || true
 
       - name: Create namespaces
         run: |
-          kubectl --kubeconfig=kubeconfig.yaml create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig=kubeconfig.yaml apply -f -
-          kubectl --kubeconfig=kubeconfig.yaml create namespace cloudflare --dry-run=client -o yaml | kubectl --kubeconfig=kubeconfig.yaml apply -f -
+          kubectl --kubeconfig=/home/github-runner/kubeconfig.yaml create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig=/home/github-runner/kubeconfig.yaml apply -f -
+          kubectl --kubeconfig=/home/github-runner/kubeconfig.yaml create namespace cloudflare --dry-run=client -o yaml | kubectl --kubeconfig=/home/github-runner/kubeconfig.yaml apply -f -
 
       - name: Create ArgoCD admin password
         run: |
@@ -27,27 +29,27 @@ jobs:
             --from-literal=admin.password="${{ secrets.ARGOCD_ADMIN_PASSWORD }}" \
             --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
             --dry-run=client -o yaml | \
-            kubectl apply --validate=false -f -
+              kubectl --kubeconfig=kubeconfig.yaml apply --validate=false -f -
 
       - name: Create Cloudflared tunnel token
         run: |
           kubectl -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
             --from-literal=tunnelToken="${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}" \
             --dry-run=client -o yaml | \
-            kubectl apply --validate=false -f -
+              kubectl --kubeconfig=kubeconfig.yaml apply --validate=false -f -
 
       - name: Apply ArgoCD
         run: |
-          kubectl apply --validate=false -f apps/argocd.yaml
-          kubectl -n argocd wait --timeout=60s --for=condition=established crd/applications.argoproj.io || true
+         kubectl --kubeconfig=kubeconfig.yaml apply --validate=false -f apps/argocd.yaml
+         kubectl --kubeconfig=kubeconfig.yaml -n argocd wait --timeout=60s --for=condition=established crd/applications.argoproj.io || true
 
       - name: Wait for ArgoCD to be ready
         run: |
-          kubectl -n argocd wait --for=condition=available --timeout=300s deployment/argocd-server || true
+         kubectl --kubeconfig=kubeconfig.yaml -n argocd wait --for=condition=available --timeout=300s deployment/argocd-server || true
           sleep 30  # Give additional time for services to stabilize
 
       - name: Apply Cloudflared
-        run: kubectl apply --validate=false -f apps/cloudflared.yaml
+        run: kubectl --kubeconfig=kubeconfig.yaml apply --validate=false -f apps/cloudflared.yaml
 
       - name: Clean up
         if: always()
