@@ -5,7 +5,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: dev-ops
+    runs-on: [self-hosted, dev-ops]
     steps:
       - uses: actions/checkout@v4
 
