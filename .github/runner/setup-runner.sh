@@ -66,11 +66,13 @@ chown -R github-runner:github-runner /home/github-runner/actions-runner
 
 # Install additional dependencies (must not run as root)
 log "Installing runner dependencies (as github-runner user)..."
+
+# Ensure proper permissions and run dependencies installation
 cd /home/github-runner/actions-runner
 chown -R github-runner:github-runner .
+chmod +x ./bin/installdependencies.sh
 
-# Run dependencies installation as github-runner user
-if ! sudo -H -u github-runner bash -c 'cd /home/github-runner/actions-runner && ./bin/installdependencies.sh'; then
+if ! sudo -H -u github-runner bash -c 'cd /home/github-runner/actions-runner && sudo ./bin/installdependencies.sh'; then
     error "Failed to install runner dependencies"
 fi
 
