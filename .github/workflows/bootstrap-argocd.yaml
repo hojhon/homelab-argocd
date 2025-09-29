@@ -50,6 +50,12 @@ jobs:
             --from-literal=tunnelToken="$CF_TOKEN" \
             --dry-run=client -o yaml | kubectl apply --validate=false -f -
 
+      - name: Delete Existing ArgoCD Resources
+        run: |
+          echo "Deleting existing ArgoCD resources to handle immutable field changes..."
+          kubectl --kubeconfig="$KUBECONFIG" delete deployment -n argocd --all --ignore-not-found
+          kubectl --kubeconfig="$KUBECONFIG" delete statefulset -n argocd --all --ignore-not-found
+
       - name: Install Core ArgoCD Controller
         run: |
           echo "Applying official ArgoCD install manifest..."
