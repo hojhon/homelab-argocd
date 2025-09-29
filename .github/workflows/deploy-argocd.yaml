@@ -30,10 +30,20 @@ jobs:
               exit 1
             fi
 
+      - name: Debug kubectl/KUBECONFIG
+        run: |
+          echo "KUBECONFIG=${KUBECONFIG}"
+          test -f "$KUBECONFIG" && ls -l "$KUBECONFIG" || { echo "KUBECONFIG file missing"; exit 1; }
+          echo "server entries:" && grep -n 'server:' "$KUBECONFIG" || true
+          echo "kubectl client version:" && kubectl --kubeconfig="$KUBECONFIG" version --client=true || true
+          echo "cluster-info:" && kubectl --kubeconfig="$KUBECONFIG" cluster-info || true
+          echo "nodes:" && kubectl --kubeconfig="$KUBECONFIG" get nodes -o wide || true
+          echo "auth can-i create ns:" && kubectl --kubeconfig="$KUBECONFIG" auth can-i create ns || true
+
       - name: Create namespaces
         run: |
-          kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig="$KUBECONFIG" apply -f -
-          kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl --kubeconfig="$KUBECONFIG" apply -f -
+          kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig="$KUBECONFIG" apply -f - --validate=false
+          kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl --kubeconfig="$KUBECONFIG" apply -f - --validate=false
 
       - name: Create ArgoCD admin password
         run: |
