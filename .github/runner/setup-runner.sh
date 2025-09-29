@@ -101,7 +101,6 @@ sudo -u github-runner bash -c 'cd /home/github-runner/actions-runner && ./config
     --labels "self-hosted,dev-ops" \
     --work _work \
     --runasservice'
-
 log "Installing runner service..."
 cd /home/github-runner/actions-runner
 ./svc.sh install root

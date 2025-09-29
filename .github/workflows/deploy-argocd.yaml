@@ -12,12 +12,12 @@ jobs:
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
 
-      - name: Configure kubectl
+      - name: Configure kubeconfig
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 --decode > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
           echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
-          export KUBECONFIG=$(pwd)/kubeconfig.yaml
-          kubectl config view
+          kubectl --kubeconfig=kubeconfig.yaml config view
 
       - name: Create namespaces
         run: |
