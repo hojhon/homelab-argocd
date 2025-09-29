@@ -15,11 +15,20 @@ spec:
           cloudflared:
             repository: "cloudflare/cloudflared"
             tag: "2024.2.0"
-            pullPolicy: "IfNotPresent"
         tunnel:
           existingSecret: cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
-          name: homelab  # Name configured in Cloudflare dashboard
+          name: homelab
+        
+        # This ingress section provides the complete routing and TLS configuration
+        ingress:
+          - hostname: argocd.shinyshiba.com
+            service: https://argocd-server.argocd.svc:443
+            originRequest:
+              noTLSVerify: true # This is the critical setting
+          # This rule is a catch-all to prevent the tunnel from trying to proxy other hostnames
+          - service: http_status:404
+
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
@@ -29,4 +38,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-
