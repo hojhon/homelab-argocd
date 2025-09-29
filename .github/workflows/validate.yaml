@@ -1,0 +1,37 @@
+name: Validate Kubernetes Manifests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Kubernetes tools
+        uses: yokawasa/action-setup-kube-tools@v0.9.3
+        with:
+          setup-tools: |
+            kubectl
+            kustomize
+            kubeconform
+
+      - name: Validate Kubernetes manifests
+        run: |
+          find . -type f -name "*.yaml" -not -path "*/\.*" -print0 | while IFS= read -r -d $'\0' file; do
+            if [[ "$file" != "./apps/overlays/"* ]]; then
+              echo "Validating $file"
+              kubeconform "$file"
+            fi
+          done
+
+      - name: Validate kustomizations
+        run: |
+          for dir in $(find ./apps -type f -name "kustomization.yaml" -exec dirname {} \;); do
+            echo "Building kustomization in $dir"
+            kustomize build "$dir"
+          done

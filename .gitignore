@@ -1,2 +1,28 @@
+# Kubernetes configs
 k3s-config.yaml
+kubeconfig
+kubeconfig.yaml
+*.kubeconfig
 devops.yaml
+
+# Secrets
+secrets/
+.secrets/
+*secret*.yaml
+*token*.yaml
+
+# SOPS
+.sops.yaml
+*.sops.yaml
+*.enc.yaml
+
+# Environment files
+.env
+*.env
+.env.*
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo

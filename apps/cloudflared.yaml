@@ -19,7 +19,7 @@ spec:
         tunnel:
           existingSecret: cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
-          name: 27d60438-63d3-4841-8250-e9317db8adff
+          name: homelab  # Name configured in Cloudflare dashboard
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare

@@ -1,0 +1,48 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+
+      - name: Create ArgoCD admin password
+        run: |
+          kubectl -n argocd create secret generic argocd-secret \
+            --from-literal=admin.password="${{ secrets.ARGOCD_ADMIN_PASSWORD }}" \
+            --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create Cloudflared tunnel token
+        run: |
+          kubectl -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
+            --from-literal=tunnelToken="${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply ArgoCD
+        run: kubectl apply -f apps/argocd.yaml
+
+      - name: Wait for ArgoCD to be ready
+        run: kubectl -n argocd wait --for=condition=available --timeout=300s deployment/argocd-server
+
+      - name: Apply Cloudflared
+        run: kubectl apply -f apps/cloudflared.yaml
+
+      - name: Clean up
+        if: always()
+        run: rm -f kubeconfig.yaml

@@ -11,33 +11,25 @@ spec:
     chart: argo-cd
     helm:
       values: |
-        repoServer:
-          volumes:
-            - name: sops-pgp-key
-              secret:
-                secretName: sops-pgp-key
-          volumeMounts:
-            - name: sops-pgp-key
-              mountPath: /app/config/pgp
-              readOnly: true
+        server:
+          extraArgs:
+            - --insecure # Since we're using Cloudflare for TLS
+          config:
+            url: https://argocd.shinyshiba.com
+            application.instanceLabelKey: argocd.argoproj.io/instance
         configs:
-          cmp:
-            create: true
-            data:
-              "sops.yaml": |
-                apiVersion: argoproj.io/v1alpha1
-                kind: ConfigManagementPlugin
-                metadata:
-                  name: sops
-                spec:
-                  version: v1.0
-                  image: butcher/argocd-sops:v1.2.0
-                  init:
-                    command: ["/bin/sh", "-c"]
-                    args: ["gpg --import /app/config/pgp/key.asc"]
-                  generate:
-                    command: ["/bin/sh", "-c"]
-                    args: ["sops -d ."]
+          params:
+            server.insecure: true # Since we're using Cloudflare for TLS
+        redis-ha:
+          enabled: false # Single node setup
+        controller:
+          replicas: 1
+        server:
+          replicas: 1
+        repoServer:
+          replicas: 1
+        applicationSet:
+          replicas: 1
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
