@@ -45,10 +45,20 @@ jobs:
             --from-literal=server.secretkey="$ARGOCD_SECRET_KEY" \
             --dry-run=client -o yaml | kubectl apply --validate=false -f -
           
-          # Create Cloudflared tunnel token using the env variable
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
+          # Delete existing cloudflared secret if it exists to avoid conflicts
+          kubectl --kubeconfig="$KUBECONFIG" delete secret cloudflared-cloudflare-tunnel-remote -n cloudflare --ignore-not-found
+          
+          # Create Cloudflared tunnel token using the env variable (matching our manual fix)
+          kubectl --kubeconfig="$KUBECONFIG" create secret generic cloudflared-cloudflare-tunnel-remote \
             --from-literal=tunnelToken="$CF_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply --validate=false -f -
+            -n cloudflare
+
+      - name: Install ArgoCD CLI
+        run: |
+          echo "Installing ArgoCD CLI..."
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
 
       - name: Delete Existing ArgoCD Resources
         run: |
@@ -73,10 +83,39 @@ jobs:
 
       - name: Wait for GitOps Handover to Complete
         run: |
-          echo "Waiting for the GitOps-managed 'argocd' application to become healthy..."
+          echo "Waiting for the root application to sync..."
           kubectl --kubeconfig="$KUBECONFIG" wait --for=jsonpath='{.status.health.status}'=Healthy \
-            --timeout=300s -n argocd application/argocd
+            --timeout=300s -n argocd application/root
+          
+          echo "Waiting for all applications to be synced..."
+          sleep 30
+          kubectl --kubeconfig="$KUBECONFIG" get applications -n argocd
           echo "Bootstrap complete! ArgoCD is now managing all applications from Git."
+
+      - name: Configure Repository Access
+        env:
+          ARGO_PAT: ${{ secrets.ARGO_PAT }}
+        run: |
+          echo "Waiting for ArgoCD server to be fully ready..."
+          kubectl --kubeconfig="$KUBECONFIG" wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+          
+          # Port forward to access ArgoCD (run in background)
+          kubectl --kubeconfig="$KUBECONFIG" port-forward svc/argocd-server -n argocd 8080:443 &
+          PF_PID=$!
+          sleep 10
+          
+          # Login to ArgoCD
+          echo "Logging into ArgoCD..."
+          argocd login localhost:8080 --username admin --password "${{ secrets.ARGOCD_ADMIN_PASSWORD }}" --insecure
+          
+          echo "Configuring repository access in ArgoCD..."
+          argocd repo add https://github.com/hojhon/homelab-argocd.git \
+            --username "hojhon" \
+            --password "$ARGO_PAT" \
+            --insecure-skip-server-verification
+          
+          # Clean up port forward
+          kill $PF_PID || true
 
       - name: Clean up
         if: always()
