@@ -25,7 +25,7 @@ spec:
             originRequest:
               noTLSVerify: true # This is the critical setting
           - hostname: jhonherrera.site
-            service: https://hojhon-site.default.svc.cluster.local:443
+            service: http://hojhon-site.default.svc.cluster.local:80
             originRequest:
               noTLSVerify: true
           - service: http_status:404
