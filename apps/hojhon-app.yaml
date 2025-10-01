@@ -13,7 +13,7 @@ spec:
       include: "hojhon-dep.yaml"
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: default
+    namespace: hojhon-site
   syncPolicy:
     automated:
       prune: true

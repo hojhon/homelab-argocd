@@ -36,6 +36,7 @@ jobs:
         run: |
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig="$KUBECONFIG" create namespace hojhon-site --dry-run=client -o yaml | kubectl apply -f -
 
           # Fail fast if CLOUDFLARE_TUNNEL_TOKEN is not available in this run (common with protected environments)
           if [ -z "$CF_TOKEN" ]; then
@@ -65,8 +66,9 @@ jobs:
           kubectl --kubeconfig="$KUBECONFIG" -n cloudflare annotate secret cloudflared-cloudflare-tunnel-remote \
             helm.sh/resource-policy=keep --overwrite
 
-          # Create docker-registry secret in default namespace for image pulls (if credentials provided)
+          # Create docker-registry secret in default and hojhon-site namespaces for image pulls (if credentials provided)
           if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            # Create in default namespace (for any apps that still use it)
             kubectl --kubeconfig="$KUBECONFIG" -n default delete secret dockerhub-regcred --ignore-not-found
             kubectl --kubeconfig="$KUBECONFIG" -n default create secret docker-registry dockerhub-regcred \
               --docker-username="$DOCKERHUB_USER" \
@@ -75,6 +77,17 @@ jobs:
             
             # Protect DockerHub secret from being overwritten
             kubectl --kubeconfig="$KUBECONFIG" -n default annotate secret dockerhub-regcred \
+              helm.sh/resource-policy=keep --overwrite
+
+            # Create in hojhon-site namespace
+            kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site delete secret dockerhub-regcred --ignore-not-found
+            kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site create secret docker-registry dockerhub-regcred \
+              --docker-username="$DOCKERHUB_USER" \
+              --docker-password="$DOCKERHUB_TOKEN" \
+              --docker-server=https://index.docker.io/v1/ || true
+            
+            # Protect DockerHub secret from being overwritten in hojhon-site namespace
+            kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site annotate secret dockerhub-regcred \
               helm.sh/resource-policy=keep --overwrite
           else
             echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not provided; skipping dockerhub-regcred creation"
