@@ -36,7 +36,13 @@ jobs:
         run: |
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
-          
+
+          # Fail fast if CLOUDFLARE_TUNNEL_TOKEN is not available in this run (common with protected environments)
+          if [ -z "$CF_TOKEN" ]; then
+            echo "ERROR: CLOUDFLARE_TUNNEL_TOKEN is empty or not accessible in this run. Check repository/environment secrets and approvals." >&2
+            exit 1
+          fi
+
           # Generate a random secret key for the ArgoCD server
           ARGOCD_SECRET_KEY=$(openssl rand -base64 32)
 
@@ -46,14 +52,11 @@ jobs:
             --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
             --from-literal=server.secretkey="$ARGOCD_SECRET_KEY" \
             --dry-run=client -o yaml | kubectl apply --validate=false -f -
-          
-          # Delete existing cloudflared secret if it exists to avoid conflicts
-          kubectl --kubeconfig="$KUBECONFIG" delete secret cloudflared-cloudflare-tunnel-remote -n cloudflare --ignore-not-found
-          
-          # Create Cloudflared tunnel token using the env variable (matching our manual fix)
-          kubectl --kubeconfig="$KUBECONFIG" create secret generic cloudflared-cloudflare-tunnel-remote \
-            --from-literal=tunnelToken="$CF_TOKEN" \
-            -n cloudflare
+
+          # Create or update Cloudflared tunnel token secret, then mark it as kept so Helm won't overwrite it
+          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
+            --from-literal=tunnelToken="$CF_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare patch secret cloudflared-cloudflare-tunnel-remote -p '{"metadata":{"annotations":{"helm.sh/resource-policy":"keep"}}}' || true
 
           # Create docker-registry secret in default namespace for image pulls (if credentials provided)
           if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
