@@ -32,6 +32,13 @@ spec:
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: cloudflare
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: cloudflared-cloudflare-tunnel-remote
+      jsonPointers:
+        - /data/tunnelToken
+        - /stringData/tunnelToken
   syncPolicy:
     automated:
       prune: true
