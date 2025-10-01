@@ -52,8 +52,6 @@ homelab-argocd/
 │   └── cloudflared.yaml             # Cloudflare tunnel application
 ├── homelab-apps/
 │   └── root-application.yaml        # ArgoCD root app (if using app-of-apps)
-├── cloudflared-secret.yaml          # ⚠️  LEAKED - MOVE TO .gitignore
-├── k3s-config.yaml                  # ⚠️  LEAKED - MOVE TO .gitignore  
 └── README.md
 ```
 
@@ -67,9 +65,9 @@ homelab-argocd/
 
 ### GitHub Secrets Required
 ```bash
-ARGOCD_ADMIN_PASSWORD    # ArgoCD admin password
-CLOUDFLARE_TUNNEL_TOKEN  # Cloudflare tunnel token
-ARGO_PAT                # GitHub Personal Access Token
+ArgoCD admin password
+Cloudflare tunnel token
+GitHub Personal Access Token
 ```
 
 ### Bootstrap Deployment
@@ -222,18 +220,7 @@ kubectl -n cloudflare get secret cloudflared-cloudflare-tunnel-remote -o yaml
 - [ ] **Security**: Policy engine (OPA Gatekeeper)
 - [ ] **Multi-cluster**: Expand to multiple K3s nodes
 - [ ] **Service Mesh**: Istio for advanced networking
-- [ ] **GitOps**: Flux as alternative to ArgoCD
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Test changes in dev environment
-4. Submit pull request
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
 
 ---
 
@@ -241,6 +228,3 @@ MIT License - see LICENSE file for details.
 
 - **ArgoCD**: Manages all deployments in the cluster
 - **Cloudflared**: Provides secure access through Cloudflare Tunnels
-
-## Structure
-
