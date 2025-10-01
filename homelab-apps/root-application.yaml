@@ -10,6 +10,15 @@ spec:
     path: apps
     directory:
       recurse: true
+      # Exclude raw resource manifests (Deployment/Service/etc) so the root app doesn't
+      # claim the same resources as child applications. Keep Application CRs in the
+      # repo (e.g. apps/*/application.yaml) and exclude the typical resource filenames.
+      exclude:
+        - "**/*deployment*.yaml"
+        - "**/*deployment*.yml"
+        - "**/*service*.yaml"
+        - "**/*service*.yml"
+        - "**/*.disabled"
     targetRevision: main
   destination:
     server: 'https://kubernetes.default.svc'
