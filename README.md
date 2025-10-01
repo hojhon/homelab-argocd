@@ -2,22 +2,6 @@
 
 A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), and Cloudflare tunnels for secure external access.
 
-
-**Immediate Actions Required**:
-```bash
-# 1. Add to .gitignore
-echo "cloudflared-secret.yaml" >> .gitignore
-echo "k3s-config.yaml" >> .gitignore
-
-# 2. Remove from git history
-git rm --cached cloudflared-secret.yaml k3s-config.yaml
-git commit -m "Remove leaked credentials"
-
-# 3. Rotate credentials
-# - Regenerate Cloudflare tunnel token
-# - Regenerate K3s certificates if needed
-```
-
 ## 🏗️ Architecture Overview
 
 ```
