@@ -24,7 +24,7 @@ spec:
             service: https://argocd-server.argocd.svc:443
             originRequest:
               noTLSVerify: true # This is the critical setting
-          - hostname: jhonherrera.site
+          - hostname: jhon.shinyshiba.com
             service: http://hojhon-site.default.svc.cluster.local:80
             originRequest:
               noTLSVerify: true

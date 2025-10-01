@@ -56,7 +56,6 @@ jobs:
           # Create or update Cloudflared tunnel token secret, then mark it as kept so Helm won't overwrite it
           kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
             --from-literal=tunnelToken="$CF_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare patch secret cloudflared-cloudflare-tunnel-remote -p '{"metadata":{"annotations":{"helm.sh/resource-policy":"keep"}}}' || true
 
           # Create docker-registry secret in default namespace for image pulls (if credentials provided)
           if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
@@ -159,16 +158,6 @@ jobs:
 
           # Clean up port-forward
           kill $PF_PID || true
-
-          # Force sync root and child apps so ownership and resources are created in the desired order
-          echo "Forcing a sync of root and hojhon-site to ensure ownership is correct..."
-          argocd app sync root --grpc-web || true
-          # Wait a short moment then sync the child app (repo contains child application)
-          sleep 5
-          argocd app sync hojhon-site --grpc-web || true
-          # Also ensure the cloudflared app is synced at the end of bootstrap
-          echo "Forcing a sync of cloudflared application to ensure ingress settings are applied..."
-          argocd app sync cloudflared --grpc-web || true
 
       - name: Clean up
         if: always()
