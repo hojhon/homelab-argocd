@@ -9,6 +9,8 @@ spec:
     repoURL: 'https://github.com/hojhon/homelab-argocd.git'
     targetRevision: main
     path: apps/hojhon-site
+    directory:
+      exclude: "application.yaml"
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: default
