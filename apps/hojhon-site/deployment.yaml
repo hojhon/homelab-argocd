@@ -23,17 +23,17 @@ spec:
           # Replace this image with your pushed image (example: docker.io/pxpucho/hojhon-site:latest)
           image: docker.io/pxpucho/hojhon-site:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 80
           readinessProbe:
             httpGet:
               path: /
-              port: 8080
+                port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+                port: 80
             initialDelaySeconds: 15
             periodSeconds: 20
 
