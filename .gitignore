@@ -10,6 +10,7 @@ secrets/
 .secrets/
 *secret*.yaml
 *token*.yaml
+cloudflared-secret.yaml
 
 # SOPS
 .sops.yaml
