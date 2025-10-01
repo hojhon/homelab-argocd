@@ -2,12 +2,6 @@
 
 A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), and Cloudflare tunnels for secure external access.
 
-## 🚨 SECURITY ALERT
-
-**CRITICAL**: This repository contains leaked credentials that must be addressed immediately:
-
-1. **`cloudflared-secret.yaml`** - Contains real Cloudflare tunnel token
-2. **`k3s-config.yaml`** - Contains real Kubernetes certificates and private keys
 
 **Immediate Actions Required**:
 ```bash
