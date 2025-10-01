@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hojhon-site
-  namespace: default
+  namespace: hojhonsite
   labels:
     app: hojhon-site
 spec:
@@ -43,7 +43,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: hojhon-site
-  namespace: default
+  namespace: hojhonsite
   labels:
     app: hojhon-site
 spec:
