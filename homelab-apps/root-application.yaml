@@ -10,9 +10,9 @@ spec:
     path: apps
     directory:
       recurse: true
-      exclude: |
-        hojhon-dep.yaml
-        hojhon-site/**
+      include: |
+        *-app.yaml
+        cloudflared.yaml
     targetRevision: main
   destination:
     server: 'https://kubernetes.default.svc'
