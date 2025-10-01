@@ -155,7 +155,6 @@ jobs:
             --username "hojhon" \
             --password "$ARGO_PAT" \
             --insecure-skip-server-verification || true
-
           # Clean up port-forward
           kill $PF_PID || true
 
