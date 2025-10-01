@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: 'https://github.com/hojhon/homelab-argocd.git'
     targetRevision: main
-    path: apps
+    path: apps/hojhon-site
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: default
