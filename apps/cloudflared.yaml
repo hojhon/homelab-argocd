@@ -24,6 +24,10 @@ spec:
             service: https://argocd-server.argocd.svc:443
             originRequest:
               noTLSVerify: true # This is the critical setting
+          - hostname: jhonherrera.site
+            service: https://hojhon-site.default.svc.cluster.local:443
+            originRequest:
+              noTLSVerify: true
           - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'

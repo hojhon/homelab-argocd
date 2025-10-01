@@ -70,6 +70,7 @@ Cloudflare tunnel token
 GitHub Personal Access Token
 ```
 
+
 ### Bootstrap Deployment
 1. **Trigger Workflow**: Manual trigger of `bootstrap-argocd` workflow
 2. **Create Namespaces**: `argocd` and `cloudflare`
@@ -228,3 +229,4 @@ kubectl -n cloudflare get secret cloudflared-cloudflare-tunnel-remote -o yaml
 
 - **ArgoCD**: Manages all deployments in the cluster
 - **Cloudflared**: Provides secure access through Cloudflare Tunnels
+

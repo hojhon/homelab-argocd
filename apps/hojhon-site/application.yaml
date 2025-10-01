@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hojhon-site
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/hojhon/homelab-argocd.git'
+    targetRevision: HEAD
+    path: apps/hojhon-site
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
