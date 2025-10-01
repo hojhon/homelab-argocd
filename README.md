@@ -122,7 +122,7 @@ kubectl apply -f homelab-apps/root-application.yaml
 ### Accessing ArgoCD
 ```bash
 # Option 1: External URL (recommended)
-https://argocd.shinyshiba.com
+https://argocd.com
 
 # Option 2: Port forward (debugging)
 kubectl port-forward svc/argocd-server -n argocd 8080:443
