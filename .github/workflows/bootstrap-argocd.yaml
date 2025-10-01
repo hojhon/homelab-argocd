@@ -52,6 +52,10 @@ jobs:
             --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
             --from-literal=server.secretkey="$ARGOCD_SECRET_KEY" \
             --dry-run=client -o yaml | kubectl apply --validate=false -f -
+          
+          # Protect ArgoCD secret from being overwritten
+          kubectl --kubeconfig="$KUBECONFIG" -n argocd annotate secret argocd-secret \
+            helm.sh/resource-policy=keep --overwrite
 
           # Create or update Cloudflared tunnel token secret, then mark it as kept so Helm won't overwrite it
           kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
@@ -68,6 +72,10 @@ jobs:
               --docker-username="$DOCKERHUB_USER" \
               --docker-password="$DOCKERHUB_TOKEN" \
               --docker-server=https://index.docker.io/v1/ || true
+            
+            # Protect DockerHub secret from being overwritten
+            kubectl --kubeconfig="$KUBECONFIG" -n default annotate secret dockerhub-regcred \
+              helm.sh/resource-policy=keep --overwrite
           else
             echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not provided; skipping dockerhub-regcred creation"
           fi
