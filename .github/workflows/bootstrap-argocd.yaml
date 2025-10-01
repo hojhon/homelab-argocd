@@ -32,7 +32,7 @@ jobs:
           ARGOCD_PASS: ${{ secrets.ARGOCD_ADMIN_PASSWORD }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
@@ -93,13 +93,6 @@ jobs:
         run: |
           echo "Applying the root application to hand over control to GitOps..."
           kubectl --kubeconfig="$KUBECONFIG" apply -f homelab-apps/root-application.yaml
-
-      - name: Fix root excludes & remove conflicting resources
-        run: |
-          echo "Patching in-cluster root Application to set directory.exclude (newline-separated) so it won't claim raw resources..."
-          kubectl --kubeconfig="$KUBECONFIG" -n argocd patch application root --type merge -p '{"spec":{"source":{"directory":{"exclude":"**/*deployment*.yaml\n**/*deployment*.yml\n**/*service*.yaml\n**/*service*.yml\n**/*.disabled\napps/hojhon-site/application.yaml"}}}}' || true
-
-          echo "Note: this step only patches the root Application to avoid destructive deletes during bootstrap. Conflicting resources should be removed manually prior to running bootstrap if desired."
 
       - name: Wait for GitOps Handover to Complete
         run: |
