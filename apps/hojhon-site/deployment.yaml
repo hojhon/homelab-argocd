@@ -27,13 +27,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-                port: 80
+              port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
-                port: 80
+              port: 80
             initialDelaySeconds: 15
             periodSeconds: 20
 
@@ -52,5 +52,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 80
   type: ClusterIP
