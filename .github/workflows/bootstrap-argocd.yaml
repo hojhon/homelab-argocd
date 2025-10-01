@@ -31,6 +31,8 @@ jobs:
         env:
           ARGOCD_PASS: ${{ secrets.ARGOCD_ADMIN_PASSWORD }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
@@ -52,6 +54,17 @@ jobs:
           kubectl --kubeconfig="$KUBECONFIG" create secret generic cloudflared-cloudflare-tunnel-remote \
             --from-literal=tunnelToken="$CF_TOKEN" \
             -n cloudflare
+
+          # Create docker-registry secret in default namespace for image pulls (if credentials provided)
+          if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            kubectl --kubeconfig="$KUBECONFIG" -n default delete secret dockerhub-regcred --ignore-not-found
+            kubectl --kubeconfig="$KUBECONFIG" -n default create secret docker-registry dockerhub-regcred \
+              --docker-username="$DOCKERHUB_USER" \
+              --docker-password="$DOCKERHUB_TOKEN" \
+              --docker-server=https://index.docker.io/v1/ || true
+          else
+            echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not provided; skipping dockerhub-regcred creation"
+          fi
 
       - name: Install ArgoCD CLI
         run: |
@@ -80,6 +93,13 @@ jobs:
         run: |
           echo "Applying the root application to hand over control to GitOps..."
           kubectl --kubeconfig="$KUBECONFIG" apply -f homelab-apps/root-application.yaml
+
+      - name: Fix root excludes & remove conflicting resources
+        run: |
+          echo "Patching in-cluster root Application to set directory.exclude (newline-separated) so it won't claim raw resources..."
+          kubectl --kubeconfig="$KUBECONFIG" -n argocd patch application root --type merge -p '{"spec":{"source":{"directory":{"exclude":"**/*deployment*.yaml\n**/*deployment*.yml\n**/*service*.yaml\n**/*service*.yml\n**/*.disabled\napps/hojhon-site/application.yaml"}}}}' || true
+
+          echo "Note: this step only patches the root Application to avoid destructive deletes during bootstrap. Conflicting resources should be removed manually prior to running bootstrap if desired."
 
       - name: Wait for GitOps Handover to Complete
         run: |
@@ -143,6 +163,16 @@ jobs:
 
           # Clean up port-forward
           kill $PF_PID || true
+
+          # Force sync root and child apps so ownership and resources are created in the desired order
+          echo "Forcing a sync of root and hojhon-site to ensure ownership is correct..."
+          argocd app sync root --grpc-web || true
+          # Wait a short moment then sync the child app (repo contains child application)
+          sleep 5
+          argocd app sync hojhon-site --grpc-web || true
+          # Also ensure the cloudflared app is synced at the end of bootstrap
+          echo "Forcing a sync of cloudflared application to ensure ingress settings are applied..."
+          argocd app sync cloudflared --grpc-web || true
 
       - name: Clean up
         if: always()
