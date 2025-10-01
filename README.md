@@ -18,7 +18,7 @@ A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), a
 │  Cloudflare     │    │   External           │         │
 │                 │────│     Access           │─────────┘
 │ • DNS           │    │                      │
-│ • Tunnels       │    │ argocd.shinyshiba.com│
+│ • Tunnels       │    │ argocd.com│
 │ • SSL/TLS       │    │                      │
 └─────────────────┘    └──────────────────────┘
 ```
