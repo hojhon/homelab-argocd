@@ -19,6 +19,7 @@ spec:
         - "**/*service*.yaml"
         - "**/*service*.yml"
         - "**/*.disabled"
+        - "apps/hojhon-site/application.yaml"
     targetRevision: main
   destination:
     server: 'https://kubernetes.default.svc'
