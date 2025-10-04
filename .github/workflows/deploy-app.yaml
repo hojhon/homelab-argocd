@@ -4,9 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: 'Optional: specific application YAML file to deploy from homelab-apps/ (e.g. vault-app.yaml)'
+        description: 'Application YAML file to deploy from homelab-apps/ (e.g. vault-app.yaml)'
+        required: true
+        default: ''
+      namespace:
+        description: 'Optional: target namespace for the workload (overrides Application.spec.destination.namespace)'
         required: false
         default: ''
+      cloudflare:
+        description: 'yes/no - will this app use a Cloudflare tunnel?'
+        required: false
+        default: 'no'
+      cf_secret:
+        description: 'Optional: name of the Kubernetes secret (in target namespace) that holds the Cloudflare tunnel token'
+        required: false
+        default: ''
+      create_namespace:
+        description: 'yes/no - create the target namespace if it does not exist'
+        required: false
+        default: 'no'
 
 jobs:
   deploy-changed-apps:
@@ -92,23 +108,77 @@ jobs:
           set -e
           APP_FILES="${{ steps.changed.outputs.APP_FILES }}"
           echo "Application files to deploy: $APP_FILES"
-          
           if [ -z "$APP_FILES" ]; then
             echo "No application files to deploy"
             exit 0
           fi
-          
+
+          # user inputs
+          INP_NS="${{ github.event.inputs.namespace }}"
+          INP_CF="${{ github.event.inputs.cloudflare }}"
+          INP_CF_SECRET="${{ github.event.inputs.cf_secret }}"
+          INP_CREATE_NS="${{ github.event.inputs.create_namespace }}"
+
           for app_file in $APP_FILES; do
             echo "Deploying application from: $app_file"
+
+            # read declared destination namespace from the Application (if present)
+            DECL_NS=$(yq e '.spec.destination.namespace // ""' $app_file 2>/dev/null || true)
+            TARGET_NS="$DECL_NS"
+            if [ -n "$INP_NS" ]; then
+              TARGET_NS="$INP_NS"
+            fi
+
+            if [ -z "$TARGET_NS" ]; then
+              echo "No target namespace determined for $app_file (declared or via input)."
+            else
+              echo "Target namespace for this app: $TARGET_NS"
+              if [ "$INP_CREATE_NS" = 'yes' ]; then
+                kubectl --kubeconfig="$KUBECONFIG" create namespace "$TARGET_NS" --dry-run=client -o yaml | kubectl apply -f -
+              fi
+            fi
+
+            # If cloudflare requested, validate the secret exists (warning only)
+            if [ "$INP_CF" = 'yes' ]; then
+              if [ -n "$INP_CF_SECRET" ] && [ -n "$TARGET_NS" ]; then
+                if kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" get secret "$INP_CF_SECRET" >/dev/null 2>&1; then
+                  echo "Cloudflare secret $INP_CF_SECRET found in $TARGET_NS"
+                else
+                  echo "WARNING: Cloudflare secret $INP_CF_SECRET not found in namespace $TARGET_NS. The tunnel app may fail to start." >&2
+                fi
+              else
+                echo "Cloudflare requested but no cf_secret/name or target namespace provided; skipping secret check." >&2
+              fi
+            fi
+
+            # Apply the Application CR into argocd namespace so ArgoCD picks it up
             kubectl --kubeconfig="$KUBECONFIG" apply -f "$app_file"
-            
-            # Extract app name from the YAML file
-            APP_NAME=$(kubectl --kubeconfig="$KUBECONFIG" get -f "$app_file" -o jsonpath='{.metadata.name}' --dry-run=client)
+
+            # Extract app name from the YAML file (fallback to filename)
+            APP_NAME=$(kubectl --kubeconfig="$KUBECONFIG" get -f "$app_file" -o jsonpath='{.metadata.name}' --dry-run=client 2>/dev/null || true)
+            if [ -z "$APP_NAME" ]; then
+              APP_NAME=$(basename "$app_file" .yaml)
+            fi
+
             echo "Deployed ArgoCD Application: $APP_NAME"
-            
-            # Wait for the application to be ready
-            echo "Waiting for $APP_NAME to sync..."
-            kubectl --kubeconfig="$KUBECONFIG" wait --for=condition=ready --timeout=300s -n argocd application/"$APP_NAME" || true
+
+            # Wait for the application to be created in ArgoCD
+            echo "Waiting for $APP_NAME Application resource to appear..."
+            for i in {1..15}; do
+              if kubectl --kubeconfig="$KUBECONFIG" -n argocd get application "$APP_NAME" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+
+            # Ask ArgoCD to sync the app (if argocd CLI available) or wait for automated sync
+            echo "Triggering sync for $APP_NAME (via argocd CLI if available)..."
+            if command -v argocd >/dev/null 2>&1; then
+              argocd app sync "$APP_NAME" || true
+            fi
+
+            echo "Waiting for $APP_NAME to reach Healthy/Synced (timeout 300s)..."
+            kubectl --kubeconfig="$KUBECONFIG" wait --for=jsonpath='{.status.health.status}'=Healthy --timeout=300s -n argocd application/"$APP_NAME" || true
           done
 
       - name: Cleanup
