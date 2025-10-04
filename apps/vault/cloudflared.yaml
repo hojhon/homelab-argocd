@@ -27,7 +27,7 @@ spec:
           - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: cloudflare
+    namespace: vault
   ignoreDifferences:
     - group: ""
       kind: Secret
