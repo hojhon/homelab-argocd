@@ -20,14 +20,14 @@ spec:
           tokenKey: tunnelToken
           name: hojhon-site
         ingress:
-          - hostname: info.jhonherrera.site
+          - hostname: hojhon.shinyshiba.com
             service: http://hojhon-site.hojhon-site.svc.cluster.local:80
             originRequest:
               noTLSVerify: true
           - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: cloudflare
+    namespace: hojhon-site
   ignoreDifferences:
     - group: ""
       kind: Secret

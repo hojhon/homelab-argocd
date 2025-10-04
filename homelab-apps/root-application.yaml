@@ -11,10 +11,6 @@ spec:
     targetRevision: main
     directory:
       recurse: true
-      include: |
-        cloudflared.yaml
-        hojhon-cloudflared.yaml
-        hojhon-site/application.yaml
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
