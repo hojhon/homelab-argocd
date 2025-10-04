@@ -49,184 +49,89 @@ homelab-argocd/
 │   │   └── bootstrap-argocd.yaml     # Main deployment workflow
 │   └── runner/                       # Self-hosted runner setup
 ├── apps/
-│   └── cloudflared.yaml             # Cloudflare tunnel application
+│   ├── argocd/
+│   │   └── cloudflared.yaml         # Cloudflare tunnel application for ArgoCD
+│   └── hojhon-site/
+│       ├── deployment.yaml
+│       └── cloudflared.yaml         # Hojhon site workload + tunnel
 ├── homelab-apps/
-│   └── root-application.yaml        # ArgoCD root app (if using app-of-apps)
+│   ├── root-application.yaml        # ArgoCD root app (watches apps/argocd)
+# Homelab ArgoCD — concise guide
+
+This repository contains the GitOps configuration used to bootstrap and operate a single-node K3s homelab using ArgoCD and Cloudflare tunnels.
+
+## What this repo does (short)
+- Bootstraps ArgoCD control plane and necessary namespaces.
+- Creates Kubernetes secrets from GitHub Actions (tokens are provided via GitHub Secrets).
+- Deploys a root ArgoCD `Application` which watches runtime manifests under `apps/argocd/`.
+- Provides a small `deploy-app` workflow for applying new ArgoCD `Application` manifests from `homelab-apps/`.
+
+## Current structure
+```
+homelab-argocd/
+├── .github/
+│   └── workflows/
+│       ├── bootstrap-argocd.yaml   # bootstraps ArgoCD and creates initial apps/secrets
+│       └── deploy-app.yaml         # apply App manifests from homelab-apps/
+├── apps/
+│   ├── argocd/                     # manifests ArgoCD watches (root app -> recurse: true)
+│   │   └── cloudflared.yaml        # cloudflared tunnel for ArgoCD
+│   └── hojhon-site/                # example workload + tunnel for user site
+│       ├── deployment.yaml
+│       └── cloudflared.yaml
+├── homelab-apps/                   # ArgoCD Application manifests (app-of-apps)
+│   ├── root-application.yaml       # root Application that points to apps/argocd
+│   └── hojhon-site-app.yaml        # application manifest to register hojhon-site
 └── README.md
 ```
 
-## 🔧 Deployment Process
+## How it works (concise)
+- App-of-apps: `homelab-apps/root-application.yaml` is applied into the `argocd` namespace. It points to `apps/argocd/` and uses `directory.recurse: true`. Anything placed under `apps/argocd/` is then automatically managed by ArgoCD.
+- Application manifests (the `homelab-apps/` files) are ArgoCD `Application` resources. These must be applied to the cluster (into namespace `argocd`) to register child applications with ArgoCD. Use `deploy-app` workflow to add them without re-running the full bootstrap.
 
-### Prerequisites
-1. **K3s Cluster**: Single-node Kubernetes cluster
-2. **GitHub Secrets**: Required environment variables
-3. **Cloudflare Account**: With tunnel configured
-4. **Self-hosted Runner**: GitHub Actions runner on cluster
+## Adding a new app (recommended layout)
+- For a new workload that ArgoCD should manage directly:
+  1. Create `apps/argocd/<my-app>/` and put Kubernetes manifests or a Helm chart there.
+  2. Commit & push — the root Application will detect and sync the changes.
 
-### GitHub Secrets Required
+- To add a new ArgoCD Application (so it appears in the ArgoCD UI as an Application):
+  1. Create `homelab-apps/<my-app>-app.yaml` containing an `Application` CR that points to `apps/argocd/<my-app>`.
+  2. Run the `Deploy App (GitOps deployer)` workflow and pass the filename (or push and let CI detect it if configured).
+
+## Bootstrap vs routine deploy
+- bootstrap-argocd.yaml (one-time): installs ArgoCD, creates namespaces, and seeds initial secrets and root Application.
+- deploy-app.yaml (routine): applies a single `Application` manifest into `argocd/` so ArgoCD starts managing that app.
+
+## Secrets and persistence
+- Tokens and secrets should be stored in GitHub Actions secrets. The bootstrap workflow creates Kubernetes secrets in the correct namespace and sets policies so Helm doesn't overwrite them.
+- Do not commit secret values to the repo.
+
+## Quick commands
+- Show ArgoCD applications:
+
 ```bash
-ArgoCD admin password
-Cloudflare tunnel token
-GitHub Personal Access Token
-```
-
-
-### Bootstrap Deployment
-1. **Trigger Workflow**: Manual trigger of `bootstrap-argocd` workflow
-2. **Create Namespaces**: `argocd` and `cloudflare`
-3. **Install ArgoCD**: Official upstream manifests
-4. **Configure Secrets**: Admin password and tunnel token
-5. **Add Repository**: GitHub repo with PAT authentication
-6. **Deploy Applications**: Root application manages child apps
-
-### Manual Bootstrap (Alternative)
-```bash
-# 1. Create namespaces
-kubectl create namespace argocd
-kubectl create namespace cloudflare
-
-# 2. Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-# 3. Create secrets
-kubectl -n argocd create secret generic argocd-secret \
-  --from-literal=admin.password="YOUR_PASSWORD" \
-  --from-literal=admin.passwordMtime="$(date +%FT%T%Z)" \
-  --from-literal=server.secretkey="$(openssl rand -base64 32)"
-
-kubectl -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
-  --from-literal=tunnelToken="YOUR_TUNNEL_TOKEN"
-
-# 4. Deploy root application
-kubectl apply -f homelab-apps/root-application.yaml
-```
-
-## 🔐 Security Considerations
-
-### Access Control
-- **ArgoCD**: Admin access via dynamically generated password
-- **External Access**: Only through Cloudflare tunnels
-- **Repository**: Private repo with PAT authentication
-
-### Network Security
-- **No Port Forwarding**: All external access via Cloudflare
-- **TLS Termination**: At Cloudflare edge
-- **Internal Traffic**: Service mesh within cluster
-
-### Secrets Management
-- **GitHub Secrets**: Sensitive data stored in GitHub
-- **Kubernetes Secrets**: Created dynamically by workflows
-- **Rotation**: Manual rotation of PATs and tunnel tokens
-
-## 🛠️ Operations
-
-### Accessing ArgoCD
-```bash
-# Option 1: External URL (recommended)
-https://argocd.com
-
-# Option 2: Port forward (debugging)
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-# Then: https://localhost:8080
-
-# Get admin password
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 --decode
-```
-
-### Managing Applications
-```bash
-# List applications
 kubectl get applications -n argocd
+```
 
-# Sync application
+- Apply a new ArgoCD Application manually (alternative to the workflow):
+
+```bash
+kubectl apply -f homelab-apps/my-app-app.yaml
+```
+
+- Sync an application using ArgoCD CLI:
+
+```bash
 argocd app sync <app-name>
-
-# Get application status
-argocd app get <app-name>
 ```
 
-### Monitoring
-```bash
-# Check ArgoCD status
-kubectl get pods -n argocd
-
-# Check Cloudflared status  
-kubectl get pods -n cloudflare
-
-# View logs
-kubectl logs -n cloudflare -l app=cloudflared
-kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
-```
-
-## 🔄 Maintenance
-
-### Updating ArgoCD
-1. Update workflow to new ArgoCD version
-2. Run bootstrap workflow
-3. Verify all applications sync
-
-### Rotating Secrets
-1. Update GitHub Secrets
-2. Re-run bootstrap workflow
-3. Restart affected pods
-
-### Backup & Recovery
-```bash
-# Backup ArgoCD configuration
-kubectl get applications -n argocd -o yaml > argocd-backup.yaml
-
-# Restore (after cluster rebuild)
-kubectl apply -f argocd-backup.yaml
-```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-#### ArgoCD Login Failed
-```bash
-# Check admin password
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 --decode
-
-# Reset password
-kubectl -n argocd delete secret argocd-initial-admin-secret
-kubectl -n argocd rollout restart deployment argocd-server
-```
-
-#### Applications OutOfSync
-```bash
-# Force sync
-argocd app sync <app-name> --force
-
-# Check repository connection
-argocd repo list
-```
-
-#### Cloudflare Tunnel Issues
-```bash
-# Check tunnel status
-kubectl logs -n cloudflare -l app=cloudflared
-
-# Verify secret
-kubectl -n cloudflare get secret cloudflared-cloudflare-tunnel-remote -o yaml
-```
-
-## 📈 Future Enhancements
-
-- [ ] **Monitoring**: Prometheus + Grafana stack
-- [ ] **Logging**: ELK/Loki stack for centralized logging  
-- [ ] **Backup**: Automated backup solution (Velero)
-- [ ] **Security**: Policy engine (OPA Gatekeeper)
-- [ ] **Multi-cluster**: Expand to multiple K3s nodes
-- [ ] **Service Mesh**: Istio for advanced networking
-
+## Notes
+- The repo supports adding more apps. Follow the app-of-apps pattern: runtime manifests in `apps/argocd/`; ArgoCD Application CRs in `homelab-apps/`.
+- `deploy-app` is the safe path to register new Applications without re-running bootstrap.
 
 ---
 
-**⚠️ Important**: This repository contains infrastructure code. Always review changes carefully before deployment.
+If you want, I can also add a short example `vault` app and a `homelab-apps/vault-app.yaml` to show the exact layout. Tell me to proceed and I'll add it.
+## 🔐 Security Considerations
 
-- **ArgoCD**: Manages all deployments in the cluster
-- **Cloudflared**: Provides secure access through Cloudflare Tunnels
 
