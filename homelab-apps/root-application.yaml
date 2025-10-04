@@ -13,6 +13,7 @@ spec:
       recurse: true
       include: |
         cloudflared.yaml
+        hojhon-cloudflared.yaml
         hojhon-site/application.yaml
   destination:
     server: 'https://kubernetes.default.svc'

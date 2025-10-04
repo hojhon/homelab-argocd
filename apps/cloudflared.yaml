@@ -1,19 +1,40 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cloudflared-apps
+  name: cloudflared
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: 'https://github.com/hojhon/homelab-argocd.git'
-    targetRevision: main
-    path: apps/cloudflared-consolidated
+    repoURL: 'https://cloudflare.github.io/helm-charts'
+    targetRevision: 0.1.2
+    chart: cloudflare-tunnel-remote
+    helm:
+      values: |
+        images:
+          cloudflared:
+            repository: "cloudflare/cloudflared"
+            tag: "2024.2.0"
+        tunnel:
+          existingSecret: cloudflared-argocd-tunnel-secret
+          tokenKey: tunnelToken
+          name: homelab-argocd
+        ingress:
+          - hostname: argocd.shinyshiba.com
+            service: https://argocd-server.argocd.svc:443
+            originRequest:
+              noTLSVerify: true
+          - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: argocd
+    namespace: cloudflare
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: cloudflared-argocd-tunnel-secret
+      jsonPointers:
+        - /data/tunnelToken
+        - /stringData/tunnelToken
   syncPolicy:
     automated:
       prune: true
