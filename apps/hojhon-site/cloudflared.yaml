@@ -20,7 +20,7 @@ spec:
           tokenKey: tunnelToken
           name: hojhon-site
         ingress:
-          - hostname: jhonherrera.com
+          - hostname: jhonherrera.site
             service: http://hojhon-site.hojhon-site.svc.cluster.local:80
             originRequest:
               noTLSVerify: true
