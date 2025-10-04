@@ -11,8 +11,9 @@ spec:
     targetRevision: main
     directory:
       recurse: true
-      # This is the key change: find all application manifests
-      include: 'application.yaml'
+      include: |
+        cloudflared.yaml
+        hojhon-site/application.yaml
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
