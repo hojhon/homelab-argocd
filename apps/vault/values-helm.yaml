@@ -1,0 +1,17 @@
+server:
+  # expose Vault via NodePort for LAN access (temporary)
+  service:
+    type: NodePort
+    nodePort: 32000
+  # extraEnvironmentVars must be an object/map per chart schema
+  extraEnvironmentVars:
+    VAULT_DEV_ROOT_TOKEN_ID: "root"
+  # Keep Vault running across pod restarts by enabling persistent data storage
+  standalone:
+    enabled: true
+  dataStorage:
+    enabled: true
+    # small default PVC settings (can be customized later)
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi

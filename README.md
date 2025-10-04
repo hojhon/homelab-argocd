@@ -33,7 +33,7 @@ A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), a
 
 ### Applications
 - **ArgoCD**: Web UI at `https://argocd.shinyshiba.com`
-- **Cloudflared**: Tunnel service for external connectivity
+- **Cloudflared**: Tunnel service for external connectivity (used for ArgoCD and site workloads). Vault in this deployment is exposed differently and does not use a Cloudflare tunnel.
 
 ### Security
 - **Secrets Management**: GitHub Secrets + Kubernetes secrets
