@@ -12,6 +12,10 @@ spec:
     helm:
       values: |
         server:
+          # expose Vault via NodePort for LAN access (temporary)
+          service:
+            type: NodePort
+            nodePort: 32000
           extraEnvironmentVars:
             VAULT_DEV_ROOT_TOKEN_ID: "root"
           standalone:
