@@ -13,7 +13,6 @@ spec:
       include: |
         cloudflared.yaml
         hojhon-site/application.yaml
-        hojhon-site/cloudflared.yaml
     targetRevision: main
   destination:
     server: 'https://kubernetes.default.svc'

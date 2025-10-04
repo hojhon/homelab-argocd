@@ -1,8 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: hojhon-cloudflared
+  name: argocd-tunnel
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
@@ -16,22 +18,22 @@ spec:
             repository: "cloudflare/cloudflared"
             tag: "2024.2.0"
         tunnel:
-          existingSecret: hojhon-site-tunnel-secret
+          existingSecret: cloudflared-argocd-tunnel-secret
           tokenKey: tunnelToken
-          name: hojhon-site
+          name: homelab-argocd
         ingress:
-          - hostname: info.jhonherrera.site
-            service: http://hojhon-site.hojhon-site.svc.cluster.local:80
+          - hostname: argocd.shinyshiba.com
+            service: https://argocd-server.argocd.svc:443
             originRequest:
               noTLSVerify: true
           - service: http_status:404
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: hojhon-site
+    namespace: cloudflare
   ignoreDifferences:
     - group: ""
       kind: Secret
-      name: hojhon-site-tunnel-secret
+      name: cloudflared-argocd-tunnel-secret
       jsonPointers:
         - /data/tunnelToken
         - /stringData/tunnelToken
