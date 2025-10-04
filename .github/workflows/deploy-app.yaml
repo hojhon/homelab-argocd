@@ -4,9 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: 'Optional: the app folder / ArgoCD Application name to sync (e.g. hojhon-site)'
+        description: 'Optional: the ArgoCD Application name to sync (cloudflared, hojhon-site-app, or root)'
         required: false
         default: ''
+        type: choice
+        options:
+          - ''
+          - 'cloudflared'
+          - 'hojhon-site-app'
+          - 'root'
 
 jobs:
   deploy-changed-apps:
