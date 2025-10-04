@@ -16,7 +16,7 @@ spec:
             repository: "cloudflare/cloudflared"
             tag: "2024.2.0"
         tunnel:
-          existingSecret: hojhon-site-tunnel-secret
+          existingSecret: hojhon-cloudflared-cloudflare-tunnel-remote
           tokenKey: tunnelToken
           name: hojhon-site
         ingress:
