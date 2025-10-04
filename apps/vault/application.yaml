@@ -17,11 +17,17 @@ spec:
             type: NodePort
             nodePort: 32000
           extraEnvironmentVars:
-            VAULT_DEV_ROOT_TOKEN_ID: "root"
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              value: "root"
+          # Keep Vault running across pod restarts by enabling persistent data storage
           standalone:
             enabled: true
           dataStorage:
-            enabled: false
+            enabled: true
+            # small default PVC settings (can be customized later)
+            storageClass: ""
+            accessMode: ReadWriteOnce
+            size: 1Gi
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: vault
