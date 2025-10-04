@@ -16,9 +16,9 @@ spec:
           service:
             type: NodePort
             nodePort: 32000
+          # extraEnvironmentVars must be an object/map per chart schema
           extraEnvironmentVars:
-            - name: VAULT_DEV_ROOT_TOKEN_ID
-              value: "root"
+            VAULT_DEV_ROOT_TOKEN_ID: "root"
           # Keep Vault running across pod restarts by enabling persistent data storage
           standalone:
             enabled: true
