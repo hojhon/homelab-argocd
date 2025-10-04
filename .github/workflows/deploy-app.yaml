@@ -92,8 +92,10 @@ jobs:
 
       - name: Login to ArgoCD
         run: |
+          # Fetch ArgoCD initial admin password from cluster (preferred) and persist it for later steps
           ADMIN_PW=$(kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 --decode || true)
           if [ -z "$ADMIN_PW" ]; then
+            # fallback to repository secret if present
             ADMIN_PW=${{ secrets.ARGOCD_ADMIN_PASSWORD }}
           fi
           if [ -z "$ADMIN_PW" ]; then
@@ -101,7 +103,10 @@ jobs:
             kill $PF_PID || true
             exit 1
           fi
-          argocd login 127.0.0.1:8080 --insecure --username admin --password "$ADMIN_PW"
+          # Persist the admin password into the job environment so subsequent steps can reuse it
+          echo "ARGO_ADMIN_PW=$ADMIN_PW" >> $GITHUB_ENV
+          # Use grpc-web when talking to the server over the port-forward (avoids gRPC permission issues)
+          argocd login 127.0.0.1:8080 --insecure --username admin --password "$ADMIN_PW" --grpc-web
 
       - name: Deploy applications to ArgoCD
         run: |
@@ -140,14 +145,41 @@ jobs:
 
             # If cloudflare requested, validate the secret exists (warning only)
             if [ "$INP_CF" = 'yes' ]; then
-              if [ -n "$INP_CF_SECRET" ] && [ -n "$TARGET_NS" ]; then
-                if kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" get secret "$INP_CF_SECRET" >/dev/null 2>&1; then
-                  echo "Cloudflare secret $INP_CF_SECRET found in $TARGET_NS"
+              # Decide which secret name to check/use. If user supplied a name, prefer it.
+              if [ -n "$INP_CF_SECRET" ]; then
+                CF_SECRET_NAME="$INP_CF_SECRET"
+              elif [ -n "$TARGET_NS" ]; then
+                # Default naming convention for new apps: <namespace>-tunnel-remote
+                CF_SECRET_NAME="${TARGET_NS}-tunnel-remote"
+                echo "Derived Cloudflare secret name: $CF_SECRET_NAME"
+                # If the desired secret does not exist in target ns, try legacy patterns and copy token if we find it
+                if ! kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" get secret "$CF_SECRET_NAME" >/dev/null 2>&1; then
+                  LEG1="${TARGET_NS}-cloudflared-cloudflare-tunnel-remote"
+                  LEG2="cloudflared-cloudflare-tunnel-remote"
+                  if kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" get secret "$LEG1" >/dev/null 2>&1; then
+                    echo "Found legacy secret $LEG1 in $TARGET_NS; copying to $CF_SECRET_NAME"
+                    TOKEN_VAL=$(kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" get secret "$LEG1" -o jsonpath='{.data.tunnelToken}' 2>/dev/null | base64 --decode || true)
+                    if [ -n "$TOKEN_VAL" ]; then
+                      kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" create secret generic "$CF_SECRET_NAME" --from-literal=tunnelToken="$TOKEN_VAL" --dry-run=client -o yaml | kubectl apply -f -
+                    else
+                      echo "Legacy secret $LEG1 found but no tunnelToken key detected; skipping copy" >&2
+                    fi
+                  elif kubectl --kubeconfig="$KUBECONFIG" -n cloudflare get secret "$LEG2" >/dev/null 2>&1; then
+                    echo "Found $LEG2 in cloudflare namespace; copying into $TARGET_NS as $CF_SECRET_NAME"
+                    TOKEN_VAL=$(kubectl --kubeconfig="$KUBECONFIG" -n cloudflare get secret "$LEG2" -o jsonpath='{.data.tunnelToken}' 2>/dev/null | base64 --decode || true)
+                    if [ -n "$TOKEN_VAL" ]; then
+                      kubectl --kubeconfig="$KUBECONFIG" -n "$TARGET_NS" create secret generic "$CF_SECRET_NAME" --from-literal=tunnelToken="$TOKEN_VAL" --dry-run=client -o yaml | kubectl apply -f -
+                    else
+                      echo "Legacy secret $LEG2 found but no tunnelToken key detected; skipping copy" >&2
+                    fi
+                  else
+                    echo "WARNING: Cloudflare secret $CF_SECRET_NAME not found in namespace $TARGET_NS, and no legacy secret located. The tunnel app may fail to start." >&2
+                  fi
                 else
-                  echo "WARNING: Cloudflare secret $INP_CF_SECRET not found in namespace $TARGET_NS. The tunnel app may fail to start." >&2
+                  echo "Cloudflare secret $CF_SECRET_NAME found in $TARGET_NS"
                 fi
               else
-                echo "Cloudflare requested but no cf_secret/name or target namespace provided; skipping secret check." >&2
+                echo "Cloudflare requested but no target namespace provided; skipping secret derivation/check." >&2
               fi
             fi
 
@@ -155,8 +187,8 @@ jobs:
             kubectl --kubeconfig="$KUBECONFIG" apply -f "$app_file"
 
             # Extract app name from the YAML file (fallback to filename)
-            APP_NAME=$(kubectl --kubeconfig="$KUBECONFIG" get -f "$app_file" -o jsonpath='{.metadata.name}' --dry-run=client 2>/dev/null || true)
-            if [ -z "$APP_NAME" ]; then
+            APP_NAME=$(yq e '.metadata.name' "$app_file" 2>/dev/null || true)
+            if [ -z "$APP_NAME" ] || [ "$APP_NAME" = 'null' ]; then
               APP_NAME=$(basename "$app_file" .yaml)
             fi
 
@@ -174,7 +206,8 @@ jobs:
             # Ask ArgoCD to sync the app (if argocd CLI available) or wait for automated sync
             echo "Triggering sync for $APP_NAME (via argocd CLI if available)..."
             if command -v argocd >/dev/null 2>&1; then
-              argocd app sync "$APP_NAME" || true
+              # use grpc-web when syncing over the port-forward
+              argocd app sync "$APP_NAME" --grpc-web || true
             fi
 
             echo "Waiting for $APP_NAME to reach Healthy/Synced (timeout 300s)..."
