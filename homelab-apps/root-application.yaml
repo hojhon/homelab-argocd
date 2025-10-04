@@ -8,12 +8,11 @@ spec:
   source:
     repoURL: 'https://github.com/hojhon/homelab-argocd.git'
     path: apps
+    targetRevision: main
     directory:
       recurse: true
-      include: |
-        cloudflared.yaml
-        hojhon-site/application.yaml
-    targetRevision: main
+      # This is the key change: find all application manifests
+      include: 'application.yaml'
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
