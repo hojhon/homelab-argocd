@@ -4,15 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: 'Optional: the ArgoCD Application name to sync (cloudflared, hojhon-site-app, or root)'
+        description: 'Optional: specific application YAML file to deploy from homelab-apps/ (e.g. vault-app.yaml)'
         required: false
         default: ''
-        type: choice
-        options:
-          - ''
-          - 'cloudflared'
-          - 'hojhon-site-app'
-          - 'root'
 
 jobs:
   deploy-changed-apps:
@@ -44,14 +38,29 @@ jobs:
           sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
           rm argocd-linux-amd64
 
-      - name: Find changed app directories (skipped for manual runs)
+      - name: Find changed app files or deploy specific app
         id: changed
         run: |
-          # For manual runs we accept an explicit 'app' input; otherwise this step is a no-op
           if [ -n "${{ github.event.inputs.app }}" ]; then
-            echo "CHANGED_DIRS=${{ github.event.inputs.app }}" >> $GITHUB_OUTPUT
+            # Manual run: deploy specific app file
+            APP_FILE="${{ github.event.inputs.app }}"
+            if [[ ! "$APP_FILE" == *.yaml ]]; then
+              APP_FILE="${APP_FILE}.yaml"
+            fi
+            if [ -f "homelab-apps/$APP_FILE" ]; then
+              echo "APP_FILES=homelab-apps/$APP_FILE" >> $GITHUB_OUTPUT
+            else
+              echo "ERROR: Application file homelab-apps/$APP_FILE not found" >&2
+              exit 1
+            fi
           else
-            echo "CHANGED_DIRS=" >> $GITHUB_OUTPUT
+            # Auto run: find changed files in homelab-apps/
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep '^homelab-apps/.*\.yaml$' || true)
+            if [ -n "$CHANGED_FILES" ]; then
+              echo "APP_FILES=$CHANGED_FILES" >> $GITHUB_OUTPUT
+            else
+              echo "APP_FILES=" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Port-forward argocd-server
@@ -78,17 +87,28 @@ jobs:
           fi
           argocd login 127.0.0.1:8080 --insecure --username admin --password "$ADMIN_PW"
 
-      - name: Sync changed apps
+      - name: Deploy applications to ArgoCD
         run: |
           set -e
-          DIRS="${{ steps.changed.outputs.CHANGED_DIRS }}"
-          echo "Changed dirs: $DIRS"
-          for d in $DIRS; do
-            # Derive an app name: prefer folder name, convert slashes to dashes
-            APP_NAME=$(basename "$d")
-            echo "Attempting to sync ArgoCD Application: $APP_NAME"
-            argocd app sync "$APP_NAME" || echo "app $APP_NAME sync failed or not found"
-            argocd app wait "$APP_NAME" --timeout 120 || true
+          APP_FILES="${{ steps.changed.outputs.APP_FILES }}"
+          echo "Application files to deploy: $APP_FILES"
+          
+          if [ -z "$APP_FILES" ]; then
+            echo "No application files to deploy"
+            exit 0
+          fi
+          
+          for app_file in $APP_FILES; do
+            echo "Deploying application from: $app_file"
+            kubectl --kubeconfig="$KUBECONFIG" apply -f "$app_file"
+            
+            # Extract app name from the YAML file
+            APP_NAME=$(kubectl --kubeconfig="$KUBECONFIG" get -f "$app_file" -o jsonpath='{.metadata.name}' --dry-run=client)
+            echo "Deployed ArgoCD Application: $APP_NAME"
+            
+            # Wait for the application to be ready
+            echo "Waiting for $APP_NAME to sync..."
+            kubectl --kubeconfig="$KUBECONFIG" wait --for=condition=ready --timeout=300s -n argocd application/"$APP_NAME" || true
           done
 
       - name: Cleanup
