@@ -31,7 +31,7 @@ spec:
   ignoreDifferences:
     - group: ""
       kind: Secret
-      name: vault-site-tunnel-secret
+      name: vault-tunnel-remote
       jsonPointers:
         - /data/tunnelToken
         - /stringData/tunnelToken
