@@ -1,28 +1,17 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: hojhon-site
+  name: hojhon-site-app
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: 'https://github.com/hojhon/homelab-argocd.git'
-    targetRevision: main
     path: apps/hojhon-site
-    directory:
-      exclude: "application.yaml"
+    targetRevision: main
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: hojhon-site
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      jsonPointers:
-        - /metadata/labels/app.kubernetes.io~1instance
-    - group: ""
-      kind: Service
-      jsonPointers:
-        - /metadata/labels/app.kubernetes.io~1instance
   syncPolicy:
     automated:
       prune: true
