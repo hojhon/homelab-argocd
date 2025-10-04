@@ -67,6 +67,14 @@ jobs:
           kubectl --kubeconfig="$KUBECONFIG" -n cloudflare annotate secret cloudflared-argocd-tunnel-secret \
             helm.sh/resource-policy=keep --overwrite
 
+          # Also create the secret with the name that Helm chart generates (application-name + chart-name + "tunnel-remote")
+          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
+            --from-literal=tunnelToken="$CF_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Add the helm.sh/resource-policy: keep annotation to prevent Helm from overwriting this secret too
+          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare annotate secret cloudflared-cloudflare-tunnel-remote \
+            helm.sh/resource-policy=keep --overwrite
+
           # Create hojhon-site tunnel secret (if token provided)
           if [ -n "$CF_HOJHON_SITE" ]; then
             kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site create secret generic hojhon-site-tunnel-secret \
@@ -74,6 +82,14 @@ jobs:
             
             # Add the helm.sh/resource-policy: keep annotation to prevent Helm from overwriting the secret
             kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site annotate secret hojhon-site-tunnel-secret \
+              helm.sh/resource-policy=keep --overwrite
+
+            # Also create the secret with the name that Helm chart generates (application-name + chart-name + "tunnel-remote")
+            kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site create secret generic hojhon-cloudflared-cloudflare-tunnel-remote \
+              --from-literal=tunnelToken="$CF_HOJHON_SITE" --dry-run=client -o yaml | kubectl apply -f -
+            
+            # Add the helm.sh/resource-policy: keep annotation to prevent Helm from overwriting this secret too
+            kubectl --kubeconfig="$KUBECONFIG" -n hojhon-site annotate secret hojhon-cloudflared-cloudflare-tunnel-remote \
               helm.sh/resource-policy=keep --overwrite
           else
             echo "CF_HOJHON_SITE not provided; skipping hojhon-site tunnel secret creation"
