@@ -31,7 +31,8 @@ spec:
   ignoreDifferences:
     - group: ""
       kind: Secret
-      name: hojhon-site-tunnel-secret
+      # secret name produced/used by the chart in the hojhon-site namespace
+      name: hojhon-cloudflared-cloudflare-tunnel-remote
       jsonPointers:
         - /data/tunnelToken
         - /stringData/tunnelToken
