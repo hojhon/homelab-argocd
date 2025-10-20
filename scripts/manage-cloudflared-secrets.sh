@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # manage-cloudflared-secrets.sh
-# Safely create/update cloudflared tunnel secrets for argocd (cloudflare ns)
-# and hojhon-site. Also provides a check-only mode.
+# Safely create/update cloudflared tunnel secrets for hojhon-site only.
+# ArgoCD now uses internal DNS instead of Cloudflare tunnels.
 # Usage:
 #  - Interactive: ./manage-cloudflared-secrets.sh
 #  - Non-interactive: CF_TOKEN="<token>" ./manage-cloudflared-secrets.sh
@@ -9,8 +9,6 @@
 
 set -euo pipefail
 
-NAMESPACE_CF=cloudflare
-SECRET_CF=cloudflared-argocd-tunnel-secret
 NAMESPACE_SITE=hojhon-site
 SECRET_SITE=hojhon-cloudflared-cloudflare-tunnel-remote
 
@@ -22,13 +20,12 @@ Options:
   --check      Only check secrets and report empty/missing tokens
 
 Environment:
-  CF_TOKEN     (optional) the Cloudflare tunnel token. If not set, the script will prompt for it (masked).
+  CF_TOKEN     The Cloudflare tunnel token for hojhon-site. If not set, the script will prompt for it (masked).
 
 Examples:
-  CF_TOKEN=xxxxx $0            # create/update secrets non-interactively (uses same token for both)
-  CF_TOKEN_CF=aaa CF_TOKEN_SITE=bbb $0  # provide separate tokens non-interactively
+  CF_TOKEN=xxxxx $0            # create/update secret non-interactively
   $0                          # will prompt for token interactively
-  $0 --check                  # only validate secrecy state
+  $0 --check                  # only validate secret state
 EOF
 }
 
@@ -51,26 +48,20 @@ if ! command -v kubectl >/dev/null 2>&1; then
 fi
 
 check_secrets() {
-  echo "Checking cloudflared secrets..."
-  for ns in "$NAMESPACE_CF" "$NAMESPACE_SITE"; do
-    secret="$SECRET_SITE"
-    if [ "$ns" = "$NAMESPACE_CF" ]; then
-      secret="$SECRET_CF"
-    fi
-    if kubectl -n "$ns" get secret "$secret" >/dev/null 2>&1; then
-      len=$(kubectl -n "$ns" get secret "$secret" -o jsonpath='{.data.tunnelToken}' 2>/dev/null || echo -n "" | true)
-      if [ -z "$len" ]; then
-        echo "MISSING or EMPTY token in $ns/$secret"
-      else
-        # print decoded byte-length
-        b64=$(kubectl -n "$ns" get secret "$secret" -o jsonpath='{.data.tunnelToken}')
-        bytes=$(echo -n "$b64" | base64 --decode | wc -c || true)
-        echo "OK $ns/$secret length=$bytes"
-      fi
+  echo "Checking cloudflared secret for hojhon-site..."
+  if kubectl -n "$NAMESPACE_SITE" get secret "$SECRET_SITE" >/dev/null 2>&1; then
+    len=$(kubectl -n "$NAMESPACE_SITE" get secret "$SECRET_SITE" -o jsonpath='{.data.tunnelToken}' 2>/dev/null || echo -n "" | true)
+    if [ -z "$len" ]; then
+      echo "MISSING or EMPTY token in $NAMESPACE_SITE/$SECRET_SITE"
     else
-      echo "Secret not found: $ns/$secret"
+      # print decoded byte-length
+      b64=$(kubectl -n "$NAMESPACE_SITE" get secret "$SECRET_SITE" -o jsonpath='{.data.tunnelToken}')
+      bytes=$(echo -n "$b64" | base64 --decode | wc -c || true)
+      echo "OK $NAMESPACE_SITE/$SECRET_SITE length=$bytes"
     fi
-  done
+  else
+    echo "Secret not found: $NAMESPACE_SITE/$SECRET_SITE"
+  fi
 }
 
 if [ "$check_only" = true ]; then
@@ -78,84 +69,52 @@ if [ "$check_only" = true ]; then
   exit 0
 fi
 
-# Acquire tokens: support separate tokens for cloudflare (argocd) and site
-# Backwards-compatible: CF_TOKEN can still be used for both if provided.
-CF_TOKEN_CF=${CF_TOKEN_CF:-${CF_TOKEN:-}}
-CF_TOKEN_SITE=${CF_TOKEN_SITE:-${CF_TOKEN:-}}
+# Acquire token for hojhon-site tunnel
+CF_TOKEN_SITE=${CF_TOKEN:-}
 
-# prompt interactively for any missing tokens (only if running in tty)
-prompt_for_token() {
-  varname="$1"; prompt="$2"
-  # use indirect expansion to check
-  if [ -n "${!varname:-}" ]; then
-    return 0
-  fi
-  if [ -t 0 ]; then
-    printf "%s" "$prompt"
-    IFS= read -r -s val
-    printf "\n"
-    eval "$varname=\"$val\""
-  fi
-}
+# prompt interactively for missing token (only if running in tty)
+if [ -z "$CF_TOKEN_SITE" ] && [ -t 0 ]; then
+  printf "Enter Hojhon-site tunnel token: "
+  IFS= read -r -s CF_TOKEN_SITE
+  printf "\n"
+fi
 
-prompt_for_token CF_TOKEN_CF "Enter Cloudflare (argocd) tunnel token (leave empty to skip): "
-prompt_for_token CF_TOKEN_SITE "Enter Hojhon-site tunnel token (leave empty to skip): "
-
-# prepare temp files only for tokens provided
+# prepare temp file for the token
 TMPFILES=()
-mk_tmpfile_from_var() {
-  varname="$1"; outvar="$2"
-  val=${!varname:-}
-  if [ -n "$val" ]; then
-    tf=$(mktemp)
-    printf '%s' "$val" > "$tf"
-    chmod 600 "$tf"
-    TMPFILES+=("$tf")
-    eval "$outvar=\"$tf\""
-  else
-    eval "$outvar=\"\""
-  fi
-}
-
-mk_tmpfile_from_var CF_TOKEN_CF TMP_CF
-mk_tmpfile_from_var CF_TOKEN_SITE TMP_SITE
+if [ -n "$CF_TOKEN_SITE" ]; then
+  TMP_SITE=$(mktemp)
+  printf '%s' "$CF_TOKEN_SITE" > "$TMP_SITE"
+  chmod 600 "$TMP_SITE"
+  TMPFILES+=("$TMP_SITE")
+else
+  TMP_SITE=""
+fi
 
 trap 'for f in "${TMPFILES[@]:-}"; do rm -f "$f"; done' EXIT
 
-# create/update secrets using --from-file to avoid shell quoting issues
-if [ -n "$TMP_CF" ]; then
-  echo "Creating/updating secret: $NAMESPACE_CF/$SECRET_CF"
-  kubectl -n "$NAMESPACE_CF" create secret generic "$SECRET_CF" \
-    --from-file=tunnelToken="$TMP_CF" --dry-run=client -o yaml | kubectl apply -f -
-else
-  echo "Skipping $NAMESPACE_CF/$SECRET_CF: no token provided"
-fi
-
+# create/update secret using --from-file to avoid shell quoting issues
 if [ -n "$TMP_SITE" ]; then
   echo "Creating/updating secret: $NAMESPACE_SITE/$SECRET_SITE"
   kubectl -n "$NAMESPACE_SITE" create secret generic "$SECRET_SITE" \
     --from-file=tunnelToken="$TMP_SITE" --dry-run=client -o yaml | kubectl apply -f -
 else
-  echo "Skipping $NAMESPACE_SITE/$SECRET_SITE: no token provided"
+  echo "No token provided for $NAMESPACE_SITE/$SECRET_SITE"
+  exit 1
 fi
 
-# restart deployments so cloudflared picks up new secret
-echo "Restarting cloudflared deployments (if present)"
-kubectl -n "$NAMESPACE_CF" rollout restart deployment cloudflared-cloudflare-tunnel-remote --timeout=60s || true
+# restart deployment so cloudflared picks up new secret
+echo "Restarting hojhon-site cloudflared deployment"
 kubectl -n "$NAMESPACE_SITE" rollout restart deployment hojhon-cloudflared-cloudflare-tunnel-remote --timeout=60s || true
 
-# verify secrets and pods
+# verify secret and pods
 echo "Verification:"
-kubectl -n "$NAMESPACE_CF" get secret "$SECRET_CF" -o yaml || true
 kubectl -n "$NAMESPACE_SITE" get secret "$SECRET_SITE" -o yaml || true
 
 echo "Pods (cloudflared):"
-kubectl -n "$NAMESPACE_CF" get pods -l app.kubernetes.io/name=cloudflare-tunnel-remote -o wide || kubectl -n "$NAMESPACE_CF" get pods --selector=app.kubernetes.io/instance=cloudflared -o wide || true
 kubectl -n "$NAMESPACE_SITE" get pods -l pod=cloudflared -o wide || kubectl -n "$NAMESPACE_SITE" get pods --selector=app.kubernetes.io/instance=hojhon-cloudflared -o wide || true
 
-# show decoded lengths
-echo "Decoded token lengths:"
-echo -n "cloudflare/ $SECRET_CF: "; kubectl -n "$NAMESPACE_CF" get secret "$SECRET_CF" -o jsonpath='{.data.tunnelToken}' | base64 --decode | wc -c || true
+# show decoded length
+echo "Decoded token length:"
 echo -n "hojhon-site/ $SECRET_SITE: "; kubectl -n "$NAMESPACE_SITE" get secret "$SECRET_SITE" -o jsonpath='{.data.tunnelToken}' | base64 --decode | wc -c || true
 
 echo "Done. If ArgoCD re-applies an empty secret from Git, consider using SealedSecrets, ExternalSecrets, or a CI step to inject the secret instead of committing empty secrets to the repo."
@@ -186,6 +145,5 @@ ensure_tunnel_name() {
   kubectl -n "$ns" rollout status deployment "$dep" --timeout=120s || true
 }
 
-# Try to ensure the name for cloudflare and site deployments
-ensure_tunnel_name "$NAMESPACE_CF" cloudflared-cloudflare-tunnel-remote homelab || true
+# Ensure the tunnel name for hojhon-site deployment only
 ensure_tunnel_name "$NAMESPACE_SITE" hojhon-cloudflared-cloudflare-tunnel-remote hojhon-site || true
