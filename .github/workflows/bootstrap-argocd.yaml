@@ -30,18 +30,16 @@ jobs:
       - name: Create Namespaces and Secrets
         env:
           ARGOCD_PASS: ${{ secrets.ARGOCD_ADMIN_PASSWORD }}
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           CF_HOJHON_SITE: ${{ secrets.CF_HOJHON_SITE }}
           DOCKERHUB_USER: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           kubectl --kubeconfig="$KUBECONFIG" create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-          kubectl --kubeconfig="$KUBECONFIG" create namespace cloudflare --dry-run=client -o yaml | kubectl apply -f -
           kubectl --kubeconfig="$KUBECONFIG" create namespace hojhon-site --dry-run=client -o yaml | kubectl apply -f -
 
-          # Fail fast if CLOUDFLARE_TUNNEL_TOKEN is not available in this run (common with protected environments)
-          if [ -z "$CF_TOKEN" ]; then
-            echo "ERROR: CLOUDFLARE_TUNNEL_TOKEN is empty or not accessible in this run. Check repository/environment secrets and approvals." >&2
+          # Fail fast if CF_HOJHON_SITE is not available (only tunnel we use now)
+          if [ -z "$CF_HOJHON_SITE" ]; then
+            echo "ERROR: CF_HOJHON_SITE is empty or not accessible. This is the tunnel token for hojhon-site." >&2
             exit 1
           fi
 
@@ -57,28 +55,6 @@ jobs:
           
           # Protect ArgoCD secret from being overwritten
           kubectl --kubeconfig="$KUBECONFIG" -n argocd annotate secret argocd-secret \
-            helm.sh/resource-policy=keep --overwrite
-
-          # ==========================================
-          # ARGOCD TUNNEL SECRETS (uses CF_TOKEN)
-          # ==========================================
-          
-          # Create ArgoCD tunnel secret
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-argocd-tunnel-secret \
-            --from-literal=tunnelToken="$CF_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          
-          # Add the helm.sh/resource-policy: keep annotation
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare annotate secret cloudflared-argocd-tunnel-secret \
-            helm.sh/resource-policy=keep --overwrite
-
-          # Create Helm-generated secret name for ArgoCD tunnel
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare create secret generic cloudflared-cloudflare-tunnel-remote \
-            --from-literal=tunnelToken="$CF_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          
-          # Add the helm.sh/resource-policy: keep annotation
-          kubectl --kubeconfig="$KUBECONFIG" -n cloudflare annotate secret cloudflared-cloudflare-tunnel-remote \
             helm.sh/resource-policy=keep --overwrite
 
           # ==========================================
@@ -231,7 +207,6 @@ jobs:
 
       # Vault initialization/unseal is intentionally manual. If Vault is created sealed
       # during bootstrap, run the init/unseal steps locally using the scripts/vault-init-unseal.sh helper
-      # or the one-line commands in README-bootstrap.md. We intentionally do not unseal here.
 
       - name: Clean up
         if: always()

@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: CHANGE_ME_APP_NAME-cloudflared
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://cloudflare.github.io/helm-charts'
+    targetRevision: 0.1.2
+    chart: cloudflare-tunnel-remote
+    helm:
+      values: |
+        images:
+          cloudflared:
+            repository: "cloudflare/cloudflared"
+            tag: "2024.2.0"
+        tunnel:
+          existingSecret: CHANGE_ME_APP_NAME-cloudflared-cloudflare-tunnel-remote
+          tokenKey: tunnelToken
+          name: CHANGE_ME_TUNNEL_NAME
+        ingress:
+          - hostname: CHANGE_ME_DOMAIN.com
+            service: http://CHANGE_ME_APP_NAME.CHANGE_ME_NAMESPACE.svc.cluster.local:80
+            originRequest:
+              noTLSVerify: true
+          - service: http_status:404
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: CHANGE_ME_NAMESPACE
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: CHANGE_ME_APP_NAME-cloudflared-cloudflare-tunnel-remote
+      jsonPointers:
+        - /data/tunnelToken
+        - /stringData/tunnelToken
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

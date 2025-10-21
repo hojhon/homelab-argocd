@@ -1,0 +1,199 @@
+name: Delete Application from ArgoCD
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Name of the application to delete (e.g., my-app)'
+        required: true
+        type: string
+      namespace:
+        description: 'Namespace where the application is deployed'
+        required: true
+        type: string
+      delete_namespace:
+        description: 'Also delete the namespace (if empty)'
+        required: false
+        type: boolean
+        default: false
+      delete_tunnel:
+        description: 'Also delete Cloudflare tunnel (if exists)'
+        required: false
+        type: boolean
+        default: false
+      confirm_deletion:
+        description: 'Type "DELETE" to confirm you want to delete this application'
+        required: true
+        type: string
+
+jobs:
+  validate-input:
+    runs-on: [self-hosted, dev-ops]
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_deletion }}" != "DELETE" ]; then
+            echo "❌ Deletion not confirmed. You must type 'DELETE' to proceed."
+            exit 1
+          fi
+          echo "✅ Deletion confirmed for application: ${{ github.event.inputs.app_name }}"
+
+  delete-application:
+    needs: validate-input
+    runs-on: [self-hosted, dev-ops]
+    environment: homelab-variables
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure Kubeconfig
+        run: |
+          if [ -f "/home/github-runner/.kube/config" ]; then
+            echo "KUBECONFIG=/home/github-runner/.kube/config" >> $GITHUB_ENV
+          elif [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+            cp /etc/rancher/k3s/k3s.yaml kubeconfig.yaml
+            chmod 600 kubeconfig.yaml
+            echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+          else
+            echo "No kubeconfig found on runner" >&2
+            exit 1
+          fi
+
+      - name: Delete ArgoCD Applications
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          echo "🗑️ Deleting ArgoCD applications for: $APP_NAME"
+          
+          # Delete main application
+          echo "Deleting ArgoCD Application: ${APP_NAME}-app"
+          kubectl --kubeconfig="$KUBECONFIG" -n argocd delete application "${APP_NAME}-app" --ignore-not-found=true
+          
+          # Delete tunnel application if it exists
+          if [ "${{ github.event.inputs.delete_tunnel }}" = "true" ]; then
+            echo "Deleting Cloudflare tunnel Application: ${APP_NAME}-cloudflared"
+            kubectl --kubeconfig="$KUBECONFIG" -n argocd delete application "${APP_NAME}-cloudflared" --ignore-not-found=true
+          fi
+          
+          echo "✅ ArgoCD Applications deleted"
+
+      - name: Wait for Resources to be Cleaned Up
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          echo "⏳ Waiting for ArgoCD to clean up resources..."
+          
+          # Wait for pods to be terminated
+          echo "Waiting for pods in namespace $NAMESPACE to be deleted..."
+          timeout 300 bash -c "while kubectl --kubeconfig=\"$KUBECONFIG\" -n \"$NAMESPACE\" get pods --no-headers 2>/dev/null | grep -q \"$APP_NAME\"; do echo 'Waiting for pods to terminate...'; sleep 10; done" || true
+          
+          # Wait for deployments to be deleted
+          echo "Waiting for deployments to be deleted..."
+          timeout 120 bash -c "while kubectl --kubeconfig=\"$KUBECONFIG\" -n \"$NAMESPACE\" get deployment --no-headers 2>/dev/null | grep -q \"$APP_NAME\"; do echo 'Waiting for deployments to be deleted...'; sleep 5; done" || true
+          
+          echo "✅ Resources cleanup completed"
+
+      - name: Clean up Secrets and ConfigMaps
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          echo "🧹 Cleaning up secrets and configmaps for: $APP_NAME"
+          
+          # Delete application-specific secrets
+          kubectl --kubeconfig="$KUBECONFIG" -n "$NAMESPACE" delete secret "${APP_NAME}-cloudflared-cloudflare-tunnel-remote" --ignore-not-found=true
+          
+          # Delete any other app-specific secrets or configmaps
+          kubectl --kubeconfig="$KUBECONFIG" -n "$NAMESPACE" delete secret,configmap -l app="$APP_NAME" --ignore-not-found=true
+          
+          echo "✅ Secrets and ConfigMaps cleaned up"
+
+      - name: Delete Namespace (if requested and empty)
+        if: github.event.inputs.delete_namespace == 'true'
+        run: |
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          echo "🗑️ Checking if namespace $NAMESPACE can be deleted..."
+          
+          # Check if namespace has any remaining resources
+          RESOURCE_COUNT=$(kubectl --kubeconfig="$KUBECONFIG" -n "$NAMESPACE" get all --no-headers 2>/dev/null | wc -l || echo "0")
+          SECRET_COUNT=$(kubectl --kubeconfig="$KUBECONFIG" -n "$NAMESPACE" get secrets --no-headers 2>/dev/null | grep -v default-token | wc -l || echo "0")
+          
+          if [ "$RESOURCE_COUNT" -eq "0" ] && [ "$SECRET_COUNT" -eq "0" ]; then
+            echo "Namespace $NAMESPACE is empty, deleting..."
+            kubectl --kubeconfig="$KUBECONFIG" delete namespace "$NAMESPACE" --ignore-not-found=true
+            echo "✅ Namespace $NAMESPACE deleted"
+          else
+            echo "⚠️ Namespace $NAMESPACE still contains resources ($RESOURCE_COUNT resources, $SECRET_COUNT secrets). Not deleting."
+            echo "Resources in namespace:"
+            kubectl --kubeconfig="$KUBECONFIG" -n "$NAMESPACE" get all 2>/dev/null || true
+          fi
+
+      - name: Remove from Git Repository
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          
+          echo "🗑️ Removing application files from Git repository..."
+          
+          # Configure git
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          
+          # Remove application directory
+          if [ -d "apps/$APP_NAME" ]; then
+            echo "Removing apps/$APP_NAME/"
+            rm -rf "apps/$APP_NAME"
+            git add "apps/$APP_NAME" || true
+          fi
+          
+          # Remove ArgoCD application definition
+          if [ -f "homelab-apps/${APP_NAME}-app.yaml" ]; then
+            echo "Removing homelab-apps/${APP_NAME}-app.yaml"
+            rm -f "homelab-apps/${APP_NAME}-app.yaml"
+            git add "homelab-apps/${APP_NAME}-app.yaml"
+          fi
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "ℹ️ No files to remove from Git repository"
+          else
+            echo "Committing removal of $APP_NAME from repository..."
+            git commit -m "Remove application: $APP_NAME
+
+- Deleted apps/$APP_NAME/ directory
+- Removed homelab-apps/${APP_NAME}-app.yaml
+- Cleaned up via GitHub Actions workflow"
+            
+            git push origin main
+            echo "✅ Application files removed from Git repository"
+          fi
+
+      - name: Summary
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          NAMESPACE="${{ github.event.inputs.namespace }}"
+          
+          echo "🎉 Application deletion completed!"
+          echo ""
+          echo "Summary of actions performed:"
+          echo "✅ Deleted ArgoCD Application: ${APP_NAME}-app"
+          
+          if [ "${{ github.event.inputs.delete_tunnel }}" = "true" ]; then
+            echo "✅ Deleted Cloudflare tunnel Application: ${APP_NAME}-cloudflared"
+          fi
+          
+          echo "✅ Cleaned up Kubernetes resources in namespace: $NAMESPACE"
+          echo "✅ Removed secrets and configmaps"
+          
+          if [ "${{ github.event.inputs.delete_namespace }}" = "true" ]; then
+            echo "✅ Attempted to delete namespace: $NAMESPACE"
+          fi
+          
+          echo "✅ Removed application files from Git repository"
+          echo ""
+          echo "The application '$APP_NAME' has been completely removed from your GitOps setup."

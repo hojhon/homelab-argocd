@@ -9,16 +9,16 @@ A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), a
 │   GitHub Repo   │    │  GitHub Actions  │    │   K3s Cluster   │
 │                 │────│   (CI/CD Runner) │────│                 │
 │ • Manifests     │    │                  │    │ • ArgoCD        │
-│ • Configs       │    │ • Bootstrap      │    │ • Cloudflared   │
-│ • Secrets       │    │ • Deploy         │    │ • Applications  │
+│ • Templates     │    │ • Bootstrap      │    │ • Applications  │
+│ • Configs       │    │ • Deploy/Delete  │    │ • Cloudflared   │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                                         │
                                                         │
 ┌─────────────────┐    ┌──────────────────────┐         │
-│  Cloudflare     │    │   External           │         │
-│                 │────│     Access           │─────────┘
+│  Cloudflare     │    │   External Access    │         │
+│                 │────│                      │─────────┘
 │ • DNS           │    │                      │
-│ • Tunnels       │    │ argocd.com│
+│ • Tunnels       │    │ • jhonherrera.site   │
 │ • SSL/TLS       │    │                      │
 └─────────────────┘    └──────────────────────┘
 ```
@@ -27,18 +27,19 @@ A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), a
 
 ### Core Infrastructure
 - **Kubernetes Cluster**: K3s single-node cluster
-- **GitOps**: ArgoCD for declarative deployments
-- **Networking**: Cloudflare tunnels for secure external access
+- **GitOps**: ArgoCD for declarative deployments  
+- **Networking**: Traefik ingress + Cloudflare tunnels for external apps
 - **CI/CD**: GitHub Actions with self-hosted runner
 
 ### Applications
-- **ArgoCD**: Web UI at `https://argocd.shinyshiba.com`
-- **Cloudflared**: Tunnel service for external connectivity (used for ArgoCD and site workloads). Vault in this deployment is exposed differently and does not use a Cloudflare tunnel.
+- **ArgoCD**: Web UI at `http://argo.shinyshiba.com` (local DNS) 
+- **Hojhon-Site**: Personal website at `https://jhonherrera.site`
+- **Vault**: Internal secrets management (cluster-internal only)
 
 ### Security
-- **Secrets Management**: GitHub Secrets + Kubernetes secrets
-- **Network Security**: No port forwarding, all traffic through Cloudflare tunnels
-- **TLS**: Automatic SSL via Cloudflare
+- **Secrets Management**: GitHub Secrets + ArgoCD ignoreDifferences pattern
+- **Network Security**: ArgoCD uses local DNS, apps use Cloudflare tunnels
+- **TLS**: Automatic SSL via Cloudflare for external services
 
 ## 📁 Repository Structure
 
@@ -46,48 +47,117 @@ A complete GitOps-based homelab infrastructure using ArgoCD, Kubernetes (K3s), a
 homelab-argocd/
 ├── .github/
 │   ├── workflows/
-│   │   └── bootstrap-argocd.yaml     # Main deployment workflow
-│   └── runner/                       # Self-hosted runner setup
-├── apps/
-│   ├── argocd/
-│   │   └── cloudflared.yaml         # Cloudflare tunnel application for ArgoCD
-│   └── hojhon-site/
-│       ├── deployment.yaml
-│       └── cloudflared.yaml         # Hojhon site workload + tunnel
-├── homelab-apps/
-│   ├── root-application.yaml        # ArgoCD root app (watches apps/argocd)
-# Homelab ArgoCD — concise guide
-
-This repository contains the GitOps configuration used to bootstrap and operate a single-node K3s homelab using ArgoCD and Cloudflare tunnels.
-
-## What this repo does (short)
-- Bootstraps ArgoCD control plane and necessary namespaces.
-- Creates Kubernetes secrets from GitHub Actions (tokens are provided via GitHub Secrets).
-- Deploys a root ArgoCD `Application` which watches runtime manifests under `apps/argocd/`.
-- Provides a small `deploy-app` workflow for applying new ArgoCD `Application` manifests from `homelab-apps/`.
-
-## Current structure
-```
-homelab-argocd/
-├── .github/
-│   └── workflows/
-│       ├── bootstrap-argocd.yaml   # bootstraps ArgoCD and creates initial apps/secrets
-│       └── deploy-app.yaml         # apply App manifests from homelab-apps/
-├── apps/
-│   ├── argocd/                     # manifests ArgoCD watches (root app -> recurse: true)
-│   │   └── cloudflared.yaml        # cloudflared tunnel for ArgoCD
-│   └── hojhon-site/                # example workload + tunnel for user site
+│   │   ├── bootstrap-argocd.yaml     # Initial cluster setup
+│   │   ├── deploy-app.yaml          # App deployment  
+│   │   ├── delete-app.yaml          # App removal
+│   │   └── refresh-argocd-apps.yaml # Force sync
+├── templates/                       # GitOps templates
+│   ├── ONBOARDING.md               # App onboarding guide
+│   ├── argocd-app.yaml            # ArgoCD app template
+│   └── web-app/                   # Web app templates
 │       ├── deployment.yaml
 │       └── cloudflared.yaml
-├── homelab-apps/                   # ArgoCD Application manifests (app-of-apps)
-│   ├── root-application.yaml       # root Application that points to apps/argocd
-│   └── hojhon-site-app.yaml        # application manifest to register hojhon-site
+├── apps/
+│   ├── argocd/                      # ArgoCD configuration
+│   │   ├── ingress.yaml            # Local Traefik ingress  
+│   │   └── argocd-config.yaml      # ArgoCD server config
+│   ├── hojhon-site/                # Personal website
+│   │   ├── deployment.yaml         # App deployment + service
+│   │   └── cloudflared.yaml        # Cloudflare tunnel config
+│   └── vault/                      # HashiCorp Vault
+│       ├── application.yaml        # Vault ArgoCD app
+│       └── values-helm.yaml        # Helm values
+├── homelab-apps/                   # ArgoCD Application definitions
+│   ├── root-application.yaml      # Root app (watches apps/argocd)
+│   ├── hojhon-site-app.yaml       # Hojhon site application
+│   └── vault-app.yaml             # Vault application
+├── scripts/
+│   └── manage-cloudflared-secrets.sh # Tunnel secret management
 └── README.md
+
+## 🎯 Quick Start
+
+### Prerequisites
+- K3s cluster running
+- GitHub self-hosted runner on cluster node
+- Cloudflare tunnel tokens in GitHub Secrets
+
+### 1. Bootstrap ArgoCD
+```bash
+# Run via GitHub Actions
+gh workflow run "1 - Bootstrap ArgoCD"
 ```
 
-## How it works (concise)
-- App-of-apps: `homelab-apps/root-application.yaml` is applied into the `argocd` namespace. It points to `apps/argocd/` and uses `directory.recurse: true`. Anything placed under `apps/argocd/` is then automatically managed by ArgoCD.
-- Application manifests (the `homelab-apps/` files) are ArgoCD `Application` resources. These must be applied to the cluster (into namespace `argocd`) to register child applications with ArgoCD. Use `deploy-app` workflow to add them without re-running the full bootstrap.
+### 2. Access ArgoCD UI
+Add to `/etc/hosts`:
+```
+192.168.1.164 argo.shinyshiba.com
+```
+Then access: `http://argo.shinyshiba.com`
+
+### 3. Add New Applications
+```bash
+# Copy template
+cp -r templates/web-app apps/my-new-app
+
+# Edit files (change CHANGE_ME_* placeholders)
+# - apps/my-new-app/deployment.yaml
+# - apps/my-new-app/cloudflared.yaml
+
+# Create ArgoCD app
+cp templates/argocd-app.yaml homelab-apps/my-new-app-app.yaml
+# Edit placeholders
+
+# Commit and push
+git add apps/my-new-app homelab-apps/my-new-app-app.yaml
+git commit -m "Add my-new-app"
+git push
+```
+
+### 4. Delete Applications
+```bash
+# Use GitHub Actions workflow
+gh workflow run "Delete Application from ArgoCD" \
+  -f app_name=my-app \
+  -f namespace=my-app \
+  -f delete_tunnel=true \
+  -f confirm_deletion=DELETE
+```
+
+## 🔧 Management
+
+### Secret Management
+Cloudflare tunnel tokens are managed via:
+```bash
+./scripts/manage-cloudflared-secrets.sh
+```
+
+### Force Sync Applications
+```bash
+gh workflow run "Refresh ArgoCD Applications"
+```
+
+## 📚 Documentation
+
+- **[Application Onboarding Guide](templates/ONBOARDING.md)** - How to add new apps
+- **[Templates](templates/)** - GitOps templates for new applications
+
+## 🔒 Security Model
+
+### ArgoCD Access
+- **Local DNS**: `argo.shinyshiba.com` resolves to cluster IP
+- **No external exposure**: ArgoCD not accessible from internet  
+- **Ingress**: Traefik handles local routing
+
+### Application Secrets
+- **ignoreDifferences**: ArgoCD ignores tunnel token changes
+- **Persistent secrets**: Tokens don't get overwritten by GitOps
+- **GitHub Secrets**: Sensitive values stored in repository secrets
+
+### Network Security
+- **Cloudflare tunnels**: External apps use encrypted tunnels
+- **No port forwarding**: All external access through Cloudflare
+- **TLS termination**: Cloudflare handles SSL certificates
 
 ## Adding a new app (recommended layout)
 - For a new workload that ArgoCD should manage directly:
