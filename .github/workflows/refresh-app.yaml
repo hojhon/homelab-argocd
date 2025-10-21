@@ -37,11 +37,20 @@ jobs:
       - name: Validate Application Exists
         run: |
           echo "🔍 Checking if application '${{ github.event.inputs.app_name }}' exists..."
-          if ! kubectl get application ${{ github.event.inputs.app_name }} -n argocd >/dev/null 2>&1; then
+          
+          # List all applications first for debugging
+          echo "Available applications:"
+          kubectl get applications -n argocd --no-headers -o custom-columns="NAME:.metadata.name" || true
+          
+          # Check if the specific application exists
+          if kubectl get application ${{ github.event.inputs.app_name }} -n argocd >/dev/null 2>&1; then
+            echo "✅ Application '${{ github.event.inputs.app_name }}' found"
+          else
             echo "❌ Application '${{ github.event.inputs.app_name }}' not found in ArgoCD"
+            echo "Available applications in argocd namespace:"
+            kubectl get applications -n argocd -o name | sed 's|application.argoproj.io/||'
             exit 1
           fi
-          echo "✅ Application '${{ github.event.inputs.app_name }}' found"
 
       - name: Get Current Application Status
         run: |
@@ -61,18 +70,18 @@ jobs:
           
           case $STRATEGY in
             "refresh-only")
-              echo "� Refreshing application (checks for changes without syncing)..."
-              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual refresh via GitHub Actions"}],"sync":{"revision":"HEAD"}}}'
+              echo "🔄 Refreshing application (checks for changes without syncing)..."
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"sync":{"revision":"HEAD"}}}'
               ;;
               
             "soft-sync")
               echo "🔄 Performing soft sync (respects ignore differences)..."
-              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual soft sync via GitHub Actions"}],"sync":{"syncStrategy":{"apply":{"force":false}},"revision":"HEAD"}}}'
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"sync":{"revision":"HEAD","syncStrategy":{"apply":{"force":false}}}}}'
               ;;
               
             "hard-sync")
               echo "💪 Performing hard sync (ignores ignore differences)..."
-              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual hard sync via GitHub Actions"}],"sync":{"syncStrategy":{"apply":{"force":true}},"revision":"HEAD"}}}'
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"sync":{"revision":"HEAD","syncStrategy":{"apply":{"force":true}}}}}'
               ;;
           esac
 
