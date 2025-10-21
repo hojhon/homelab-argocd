@@ -34,6 +34,48 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup kubectl configuration
+        run: |
+          echo "🔧 Setting up kubectl configuration..."
+          
+          # Debug environment
+          echo "User: $(whoami)"
+          echo "Home: $HOME"
+          echo "KUBECONFIG: ${KUBECONFIG:-default}"
+          echo "Kubectl config location: ~/.kube/config"
+          
+          # Check if kubeconfig file exists
+          if [ -f ~/.kube/config ]; then
+            echo "✅ Kubeconfig file exists"
+            echo "File permissions: $(ls -la ~/.kube/config)"
+          else
+            echo "❌ Kubeconfig file not found"
+            ls -la ~/.kube/ || echo "~/.kube directory not found"
+            exit 1
+          fi
+          
+          # Test kubectl connection
+          echo "Testing kubectl connection..."
+          if timeout 10s kubectl version --short >/dev/null 2>&1; then
+            echo "✅ kubectl is configured and connected"
+            kubectl cluster-info --request-timeout=5s
+          else
+            echo "❌ kubectl connection failed"
+            echo "Attempting to diagnose..."
+            kubectl config view --minify || echo "Failed to view config"
+            kubectl config current-context || echo "Failed to get current context"
+            exit 1
+          fi
+          
+          # Verify ArgoCD namespace exists
+          if kubectl get namespace argocd >/dev/null 2>&1; then
+            echo "✅ ArgoCD namespace found"
+          else
+            echo "❌ ArgoCD namespace not found"
+            kubectl get namespaces || echo "Failed to list namespaces"
+            exit 1
+          fi
+
       - name: Validate Application Exists
         run: |
           echo "🔍 Checking if application '${{ github.event.inputs.app_name }}' exists..."
