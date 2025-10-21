@@ -1,0 +1,170 @@
+name: Refresh ArgoCD Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'ArgoCD Application Name to Refresh'
+        required: true
+        type: choice
+        options:
+          - 'hojhon-site-app'
+          - 'vault-app'
+          - 'root-application'
+        default: 'hojhon-site-app'
+      sync_strategy:
+        description: 'Sync Strategy'
+        required: true
+        type: choice
+        options:
+          - 'refresh-only'
+          - 'soft-sync'
+          - 'hard-sync'
+        default: 'refresh-only'
+      restart_deployment:
+        description: 'Restart deployment to pull latest image (for :latest tags)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  refresh-app:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Application Exists
+        run: |
+          echo "🔍 Checking if application '${{ github.event.inputs.app_name }}' exists..."
+          if ! kubectl get application ${{ github.event.inputs.app_name }} -n argocd >/dev/null 2>&1; then
+            echo "❌ Application '${{ github.event.inputs.app_name }}' not found in ArgoCD"
+            exit 1
+          fi
+          echo "✅ Application '${{ github.event.inputs.app_name }}' found"
+
+      - name: Get Current Application Status
+        run: |
+          echo "📊 Current application status:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.sync.status}' | xargs echo "Sync Status:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.health.status}' | xargs echo "Health Status:"
+          echo ""
+          echo "🕐 Last operation:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.operationState.finishedAt}' | xargs echo "Finished At:"
+
+      - name: Execute Sync Strategy
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          STRATEGY="${{ github.event.inputs.sync_strategy }}"
+          
+          echo "🚀 Executing '$STRATEGY' for application '$APP_NAME'..."
+          
+          case $STRATEGY in
+            "refresh-only")
+              echo "� Refreshing application (checks for changes without syncing)..."
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual refresh via GitHub Actions"}],"sync":{"revision":"HEAD"}}}'
+              ;;
+              
+            "soft-sync")
+              echo "🔄 Performing soft sync (respects ignore differences)..."
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual soft sync via GitHub Actions"}],"sync":{"syncStrategy":{"apply":{"force":false}},"revision":"HEAD"}}}'
+              ;;
+              
+            "hard-sync")
+              echo "💪 Performing hard sync (ignores ignore differences)..."
+              kubectl patch application $APP_NAME -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"github-actions"},"info":[{"name":"reason","value":"Manual hard sync via GitHub Actions"}],"sync":{"syncStrategy":{"apply":{"force":true}},"revision":"HEAD"}}}'
+              ;;
+          esac
+
+      - name: Wait for Sync Completion
+        run: |
+          echo "⏳ Waiting for sync to complete..."
+          
+          # Wait up to 5 minutes for sync to complete
+          timeout=300
+          interval=10
+          elapsed=0
+          
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.sync.status}')
+            operation_phase=$(kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.operationState.phase}' 2>/dev/null || echo "")
+            
+            echo "Current status: $status, Operation: $operation_phase"
+            
+            if [[ "$status" == "Synced" && "$operation_phase" != "Running" ]]; then
+              echo "✅ Application successfully synced!"
+              break
+            fi
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "⚠️  Timeout waiting for sync completion"
+          fi
+
+      - name: Restart Deployment (if requested)
+        if: ${{ github.event.inputs.restart_deployment == 'true' }}
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          echo "🔄 Restarting deployment to pull latest image for '$APP_NAME'..."
+          
+          # Map ArgoCD app names to deployment info
+          case $APP_NAME in
+            "hojhon-site-app")
+              NAMESPACE="hojhon-site"
+              DEPLOYMENT="hojhon-site"
+              ;;
+            "vault-app")
+              NAMESPACE="vault"
+              DEPLOYMENT="vault"
+              ;;
+            *)
+              echo "⚠️  Deployment restart not configured for '$APP_NAME'"
+              exit 0
+              ;;
+          esac
+          
+          # Check if deployment exists
+          if kubectl get deployment $DEPLOYMENT -n $NAMESPACE >/dev/null 2>&1; then
+            echo "🔄 Restarting deployment '$DEPLOYMENT' in namespace '$NAMESPACE'..."
+            kubectl rollout restart deployment/$DEPLOYMENT -n $NAMESPACE
+            
+            echo "⏳ Waiting for rollout to complete..."
+            kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE --timeout=300s
+            
+            echo "✅ Deployment restart completed"
+          else
+            echo "⚠️  Deployment '$DEPLOYMENT' not found in namespace '$NAMESPACE'"
+          fi
+
+      - name: Get Final Application Status
+        run: |
+          echo "📊 Final application status:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.sync.status}' | xargs echo "Sync Status:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.health.status}' | xargs echo "Health Status:"
+          echo ""
+          echo "🏁 Operation completed at:"
+          kubectl get application ${{ github.event.inputs.app_name }} -n argocd -o jsonpath='{.status.operationState.finishedAt}' | xargs echo
+          
+          # Show pods if this is a deployment application
+          if [[ "${{ github.event.inputs.app_name }}" == "hojhon-site-app" ]]; then
+            echo ""
+            echo "🔍 Current pods in hojhon-site namespace:"
+            kubectl get pods -n hojhon-site -l app=hojhon-site --no-headers | while read line; do
+              echo "  $line"
+            done
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "🎯 Operation Summary:"
+          echo "===================="
+          echo "Application: ${{ github.event.inputs.app_name }}"
+          echo "Strategy: ${{ github.event.inputs.sync_strategy }}"
+          echo "Restart Deployment: ${{ github.event.inputs.restart_deployment }}"
+          echo "Status: ${{ job.status }}"
+          echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

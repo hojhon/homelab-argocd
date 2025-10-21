@@ -132,10 +132,39 @@ Cloudflare tunnel tokens are managed via:
 ./scripts/manage-cloudflared-secrets.sh
 ```
 
-### Force Sync Applications
+### Application Sync & Refresh
+Force ArgoCD to check for updates and sync applications:
+
+**Refresh Only** (check for changes without syncing):
 ```bash
-gh workflow run "Refresh ArgoCD Applications"
+gh workflow run "Refresh ArgoCD Application" \
+  -f app_name=hojhon-site-app \
+  -f sync_strategy=refresh-only
 ```
+
+**Soft Sync** (respects ignore differences):
+```bash
+gh workflow run "Refresh ArgoCD Application" \
+  -f app_name=hojhon-site-app \
+  -f sync_strategy=soft-sync
+```
+
+**Hard Sync** (ignores ignore differences - use with caution):
+```bash
+gh workflow run "Refresh ArgoCD Application" \
+  -f app_name=hojhon-site-app \
+  -f sync_strategy=hard-sync
+```
+
+**Sync + Restart Deployment** (to pull latest `:latest` Docker images):
+```bash
+gh workflow run "Refresh ArgoCD Application" \
+  -f app_name=hojhon-site-app \
+  -f sync_strategy=soft-sync \
+  -f restart_deployment=true
+```
+
+Available applications: `hojhon-site-app`, `vault-app`, `root-application`
 
 ## 📚 Documentation
 
