@@ -29,41 +29,41 @@ on:
 
 jobs:
   refresh-app:
-    runs-on: self-hosted
+    runs-on: [self-hosted, dev-ops]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup kubectl configuration
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure Kubeconfig
         run: |
-          echo "🔧 Setting up kubectl configuration..."
-          
-          # Debug environment
-          echo "User: $(whoami)"
-          echo "Home: $HOME"
-          echo "KUBECONFIG: ${KUBECONFIG:-default}"
-          echo "Kubectl config location: ~/.kube/config"
-          
-          # Check if kubeconfig file exists
-          if [ -f ~/.kube/config ]; then
-            echo "✅ Kubeconfig file exists"
-            echo "File permissions: $(ls -la ~/.kube/config)"
+          if [ -f "/home/github-runner/.kube/config" ]; then
+            echo "KUBECONFIG=/home/github-runner/.kube/config" >> $GITHUB_ENV
+            echo "✅ Using GitHub runner kubeconfig"
+          elif [ -f "/etc/rancher/k3s/k3s.yaml" ]; then
+            cp /etc/rancher/k3s/k3s.yaml kubeconfig.yaml
+            chmod 600 kubeconfig.yaml
+            echo "KUBECONFIG=$(pwd)/kubeconfig.yaml" >> $GITHUB_ENV
+            echo "✅ Using K3s kubeconfig"
           else
-            echo "❌ Kubeconfig file not found"
-            ls -la ~/.kube/ || echo "~/.kube directory not found"
+            echo "❌ No kubeconfig found on runner"
             exit 1
           fi
+
+      - name: Verify kubectl connection
+        run: |
+          echo "🔧 Testing kubectl connection..."
+          echo "User: $(whoami)"
+          echo "KUBECONFIG: $KUBECONFIG"
           
           # Test kubectl connection
-          echo "Testing kubectl connection..."
-          if timeout 10s kubectl version --short >/dev/null 2>&1; then
-            echo "✅ kubectl is configured and connected"
+          if kubectl version --short >/dev/null 2>&1; then
+            echo "✅ kubectl is connected to cluster"
             kubectl cluster-info --request-timeout=5s
           else
             echo "❌ kubectl connection failed"
-            echo "Attempting to diagnose..."
-            kubectl config view --minify || echo "Failed to view config"
-            kubectl config current-context || echo "Failed to get current context"
             exit 1
           fi
           
@@ -72,7 +72,7 @@ jobs:
             echo "✅ ArgoCD namespace found"
           else
             echo "❌ ArgoCD namespace not found"
-            kubectl get namespaces || echo "Failed to list namespaces"
+            kubectl get namespaces
             exit 1
           fi
 
@@ -82,15 +82,15 @@ jobs:
           
           # List all applications first for debugging
           echo "Available applications:"
-          kubectl get applications -n argocd --no-headers -o custom-columns="NAME:.metadata.name" || true
+          kubectl --kubeconfig="$KUBECONFIG" get applications -n argocd --no-headers -o custom-columns="NAME:.metadata.name" || true
           
           # Check if the specific application exists
-          if kubectl get application ${{ github.event.inputs.app_name }} -n argocd >/dev/null 2>&1; then
+          if kubectl --kubeconfig="$KUBECONFIG" get application ${{ github.event.inputs.app_name }} -n argocd >/dev/null 2>&1; then
             echo "✅ Application '${{ github.event.inputs.app_name }}' found"
           else
             echo "❌ Application '${{ github.event.inputs.app_name }}' not found in ArgoCD"
             echo "Available applications in argocd namespace:"
-            kubectl get applications -n argocd -o name | sed 's|application.argoproj.io/||'
+            kubectl --kubeconfig="$KUBECONFIG" get applications -n argocd -o name | sed 's|application.argoproj.io/||'
             exit 1
           fi
 
